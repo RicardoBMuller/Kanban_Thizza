@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kanban FCC Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-card">
+        <div class="brand-mark">KF</div>
+        <div class="brand-copy">
+          <h1>Kanban FCC Pro</h1>
+          <p>Boards modernos com múltiplos projetos</p>
+        </div>
+      </div>
+
+      <section class="sidebar-panel">
+        <div class="section-header">
+          <span>Projetos</span>
+          <button id="addProjectBtn" class="mini-btn">+ Projeto</button>
+        </div>
+        <ul id="projectList" class="project-list"></ul>
+      </section>
+
+      <section class="sidebar-panel">
+        <div class="section-header">
+          <span>Busca</span>
+        </div>
+        <input type="text" id="searchInput" placeholder="Buscar cards, labels, comentários..." />
+      </section>
+
+      <section class="sidebar-panel palette-card locked">
+        <div class="palette-preview">
+          <span class="dot dot-1"></span>
+          <span class="dot dot-2"></span>
+          <span class="dot dot-3"></span>
+          <span class="dot dot-4"></span>
+        </div>
+        <h3>Graphite Rose</h3>
+        <p>Mais premium e escuro</p>
+      </section>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <h2 id="boardTitle">Projeto</h2>
+          <p id="boardSubtitle">Organize tarefas com estilo Trello moderno</p>
+        </div>
+
+        <div class="topbar-actions">
+          <button id="renameProjectBtn" class="secondary-btn">Renomear projeto</button>
+          <button id="deleteProjectBtn" class="danger-btn">Excluir projeto</button>
+        </div>
+      </header>
+
+      <section class="board" id="board">
+        <div class="column" data-column-id="todo">
+          <div class="column-header">
+            <div>
+              <h3>A Fazer</h3>
+              <span class="column-count" id="count-todo">0</span>
+            </div>
+            <button class="add-card-btn" data-add-card="todo">+ Nova</button>
+          </div>
+          <div class="card-list" id="todoList"></div>
+        </div>
+
+        <div class="column" data-column-id="doing">
+          <div class="column-header">
+            <div>
+              <h3>Em Progresso</h3>
+              <span class="column-count" id="count-doing">0</span>
+            </div>
+            <button class="add-card-btn" data-add-card="doing">+ Nova</button>
+          </div>
+          <div class="card-list" id="doingList"></div>
+        </div>
+
+        <div class="column" data-column-id="done">
+          <div class="column-header">
+            <div>
+              <h3>Concluído</h3>
+              <span class="column-count" id="count-done">0</span>
+            </div>
+            <button class="add-card-btn" data-add-card="done">+ Nova</button>
+          </div>
+          <div class="card-list" id="doneList"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-overlay hidden" id="cardModalOverlay" aria-hidden="true">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 id="modalTitle">Novo Card</h3>
+        <button id="closeModalBtn" class="icon-btn" aria-label="Fechar">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="field">
+          <label for="cardTitleInput">Título</label>
+          <input type="text" id="cardTitleInput" placeholder="Digite o título do card" />
+        </div>
+
+        <div class="field">
+          <label for="cardDescriptionInput">Descrição</label>
+          <textarea id="cardDescriptionInput" rows="4" placeholder="Descreva a tarefa"></textarea>
+        </div>
+
+        <div class="field-grid">
+          <div class="field">
+            <label for="cardResponsibleInput">Responsável</label>
+            <input type="text" id="cardResponsibleInput" placeholder="Ex.: Ricardo" />
+          </div>
+
+          <div class="field">
+            <label for="cardDateInput">Data limite</label>
+            <input type="date" id="cardDateInput" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="cardLabelsInput">Labels</label>
+          <input type="text" id="cardLabelsInput" placeholder="Ex.: urgência, design, reunião" />
+          <small>Separe por vírgula.</small>
+        </div>
+
+        <div class="field">
+          <label>Checklist</label>
+          <div class="inline-add">
+            <input type="text" id="checkItemInput" placeholder="Novo item do checklist" />
+            <button id="addCheckItemBtn" class="secondary-btn">Adicionar</button>
+          </div>
+          <ul id="checklistEditor" class="editable-list"></ul>
+        </div>
+
+        <div class="field">
+          <label>Comentários</label>
+          <div class="inline-add">
+            <input type="text" id="commentInput" placeholder="Novo comentário" />
+            <button id="addCommentBtn" class="secondary-btn">Adicionar</button>
+          </div>
+          <ul id="commentsEditor" class="editable-list"></ul>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="deleteCardBtn" class="danger-btn hidden">Excluir card</button>
+        <div class="footer-actions">
+          <button id="cancelModalBtn" class="secondary-btn">Cancelar</button>
+          <button id="saveCardBtn" class="primary-btn">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="projectModalOverlay" aria-hidden="true">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Novo Projeto</h3>
+        <button id="closeProjectModalBtn" class="icon-btn" aria-label="Fechar">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="field">
+          <label for="projectNameInput">Nome do projeto</label>
+          <input type="text" id="projectNameInput" placeholder="Ex.: Reestruturação do site" />
+          <small>Crie uma nova área de trabalho independente.</small>
+        </div>
+      </div>
+
+      <div class="modal-footer single-end">
+        <div class="footer-actions">
+          <button id="cancelProjectModalBtn" class="secondary-btn">Cancelar</button>
+          <button id="saveProjectBtn" class="primary-btn">Criar projeto</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
