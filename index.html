@@ -1,12 +1,15 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kanban FCC Pro</title>
+  <title>Kanban FCC</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -15,173 +18,225 @@
       <div class="brand-card">
         <div class="brand-mark">TM</div>
         <div class="brand-copy">
-          <h1>Thizza Muller</h1>
+          <h1>Thizza Müller</h1>
           <p>Organize o seu dia!</p>
         </div>
       </div>
 
-      <section class="sidebar-panel">
-        <div class="section-header">
+      <section class="panel">
+        <div class="panel-header">
           <span>Projetos</span>
-          <button id="addProjectBtn" class="mini-btn">+ Projeto</button>
+          <button id="newProjectBtn" class="btn btn-soft btn-sm">+ Projeto</button>
         </div>
         <ul id="projectList" class="project-list"></ul>
       </section>
 
-      <section class="sidebar-panel">
-        <div class="section-header">
+      <section class="panel">
+        <div class="panel-header">
           <span>Busca</span>
         </div>
-        <input type="text" id="searchInput" placeholder="Buscar cards, labels, comentários..." />
+        <input id="searchInput" class="input" type="text" placeholder="Buscar cards, labels, comentários..." />
       </section>
 
-      <section class="sidebar-panel palette-card locked">
-        <div class="palette-preview">
-          <span class="dot dot-1"></span>
-          <span class="dot dot-2"></span>
-          <span class="dot dot-3"></span>
-          <span class="dot dot-4"></span>
+      <section class="panel">
+        <div class="panel-header">
+          <span>Tema</span>
         </div>
-        <h3>Graphite Rose</h3>
-        <p>Mais premium e escuro</p>
+        <div class="theme-switch">
+          <button id="lightBtn" class="btn btn-soft theme-btn">Claro</button>
+          <button id="darkBtn" class="btn btn-soft theme-btn active">Escuro</button>
+        </div>
       </section>
     </aside>
 
-    <main class="main-content">
+    <main class="main-area">
       <header class="topbar">
         <div>
-          <h2 id="boardTitle">Projeto</h2>
-          <p id="boardSubtitle">Organize tarefas com estilo Trello moderno</p>
+          <h2 id="boardTitle">Projeto Inicial</h2>
+          <p id="projectCount">1 projeto(s) no total</p>
         </div>
 
         <div class="topbar-actions">
-          <button id="renameProjectBtn" class="secondary-btn">Renomear projeto</button>
-          <button id="deleteProjectBtn" class="danger-btn">Excluir projeto</button>
+          <button id="renameProjectBtn" class="btn btn-soft">Renomear projeto</button>
+          <button id="deleteProjectBtn" class="btn btn-danger">Excluir projeto</button>
         </div>
       </header>
 
-      <section class="board" id="board">
-        <div class="column" data-column-id="todo">
+      <section class="board">
+        <div class="column" data-col="todo">
           <div class="column-header">
             <div>
-              <h3>A Fazer</h3>
+              <h3>Pendente</h3>
               <span class="column-count" id="count-todo">0</span>
             </div>
-            <button class="add-card-btn" data-add-card="todo">+ Nova</button>
+            <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
           </div>
-          <div class="card-list" id="todoList"></div>
+          <div class="cards"></div>
         </div>
 
-        <div class="column" data-column-id="doing">
+        <div class="column" data-col="doing">
           <div class="column-header">
             <div>
               <h3>Em Progresso</h3>
               <span class="column-count" id="count-doing">0</span>
             </div>
-            <button class="add-card-btn" data-add-card="doing">+ Nova</button>
+            <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
           </div>
-          <div class="card-list" id="doingList"></div>
+          <div class="cards"></div>
         </div>
 
-        <div class="column" data-column-id="done">
+        <div class="column" data-col="done">
           <div class="column-header">
             <div>
               <h3>Concluído</h3>
               <span class="column-count" id="count-done">0</span>
             </div>
-            <button class="add-card-btn" data-add-card="done">+ Nova</button>
+            <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
           </div>
-          <div class="card-list" id="doneList"></div>
+          <div class="cards"></div>
         </div>
       </section>
     </main>
   </div>
 
-  <div class="modal-overlay hidden" id="cardModalOverlay" aria-hidden="true">
-    <div class="modal modal-lg">
+  <!-- Modal de Projeto -->
+  <div class="modal-overlay hidden" id="projectModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm">
       <div class="modal-header">
-        <h3 id="modalTitle">Novo Card</h3>
-        <button id="closeModalBtn" class="icon-btn" aria-label="Fechar">✕</button>
+        <h3 id="projectModalTitle">Novo Projeto</h3>
+        <button class="icon-btn" id="closeProjectModalBtn" type="button">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <label class="field-label" for="projectNameInput">Nome do projeto</label>
+        <input id="projectNameInput" class="input" type="text" placeholder="Ex.: ALEMS125" />
+      </div>
+
+      <div class="modal-footer">
+        <button id="cancelProjectBtn" class="btn btn-soft" type="button">Cancelar</button>
+        <button id="saveProjectBtn" class="btn btn-primary" type="button">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de edição do card -->
+  <div class="modal-overlay hidden" id="cardModalOverlay" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="cardModalTitle">Novo Card</h3>
+        <button class="icon-btn" id="closeCardModalBtn" type="button">✕</button>
       </div>
 
       <div class="modal-body">
         <div class="field">
-          <label for="cardTitleInput">Título</label>
-          <input type="text" id="cardTitleInput" placeholder="Digite o título do card" />
+          <label class="field-label" for="cardTitleInput">Título</label>
+          <input id="cardTitleInput" class="input" type="text" placeholder="Digite o título do card" />
         </div>
 
         <div class="field">
-          <label for="cardDescriptionInput">Descrição</label>
-          <textarea id="cardDescriptionInput" rows="4" placeholder="Descreva a tarefa"></textarea>
+          <label class="field-label" for="cardDescInput">Descrição</label>
+          <textarea id="cardDescInput" class="textarea" placeholder="Digite a descrição"></textarea>
         </div>
 
-        <div class="field-grid">
+        <div class="grid-2">
           <div class="field">
-            <label for="cardResponsibleInput">Responsável</label>
-            <input type="text" id="cardResponsibleInput" placeholder="Ex.: Ricardo" />
+            <label class="field-label" for="cardOwnerInput">Responsável</label>
+            <input id="cardOwnerInput" class="input" type="text" placeholder="Ex.: Ricardo" />
           </div>
 
           <div class="field">
-            <label for="cardDateInput">Data limite</label>
-            <input type="date" id="cardDateInput" />
+            <label class="field-label" for="cardDateInput">Prazo</label>
+            <input id="cardDateInput" class="input" type="date" />
           </div>
         </div>
 
         <div class="field">
-          <label for="cardLabelsInput">Labels</label>
-          <input type="text" id="cardLabelsInput" placeholder="Ex.: urgência, design, reunião" />
-          <small>Separe por vírgula.</small>
+          <label class="field-label" for="cardLabelsInput">Tags</label>
+          <input id="cardLabelsInput" class="input" type="text" placeholder="Ex.: publicar, urgente, revisão" />
+          <small class="helper">Separe por vírgula.</small>
         </div>
 
         <div class="field">
-          <label>Checklist</label>
+          <label class="field-label">Checklist</label>
           <div class="inline-add">
-            <input type="text" id="checkItemInput" placeholder="Novo item do checklist" />
-            <button id="addCheckItemBtn" class="secondary-btn">Adicionar</button>
+            <input id="newChecklistItemInput" class="input" type="text" placeholder="Novo item do checklist" />
+            <button id="addChecklistItemBtn" class="btn btn-soft" type="button">Adicionar</button>
           </div>
-          <ul id="checklistEditor" class="editable-list"></ul>
+          <div id="editChecklistList" class="edit-list"></div>
         </div>
 
         <div class="field">
-          <label>Comentários</label>
+          <label class="field-label">Comentários</label>
           <div class="inline-add">
-            <input type="text" id="commentInput" placeholder="Novo comentário" />
-            <button id="addCommentBtn" class="secondary-btn">Adicionar</button>
+            <input id="newCommentInput" class="input" type="text" placeholder="Novo comentário" />
+            <button id="addCommentBtn" class="btn btn-soft" type="button">Adicionar</button>
           </div>
-          <ul id="commentsEditor" class="editable-list"></ul>
+          <div id="editCommentsList" class="edit-list"></div>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button id="deleteCardBtn" class="danger-btn hidden">Excluir card</button>
-        <div class="footer-actions">
-          <button id="cancelModalBtn" class="secondary-btn">Cancelar</button>
-          <button id="saveCardBtn" class="primary-btn">Salvar</button>
+        <button id="deleteCardBtn" class="btn btn-danger hidden" type="button">Excluir card</button>
+        <div class="footer-right">
+          <button id="cancelCardBtn" class="btn btn-soft" type="button">Cancelar</button>
+          <button id="saveCardBtn" class="btn btn-primary" type="button">Salvar</button>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="modal-overlay hidden" id="projectModalOverlay" aria-hidden="true">
-    <div class="modal modal-sm">
+  <!-- Modal de visualização do card -->
+  <div class="modal-overlay hidden" id="viewCardModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-view">
       <div class="modal-header">
-        <h3>Novo Projeto</h3>
-        <button id="closeProjectModalBtn" class="icon-btn" aria-label="Fechar">✕</button>
+        <h3 id="viewCardTitle">Detalhes do Card</h3>
+        <button class="icon-btn" id="closeViewCardModalBtn" type="button">✕</button>
       </div>
 
-      <div class="modal-body">
-        <div class="field">
-          <label for="projectNameInput">Nome do projeto</label>
-          <input type="text" id="projectNameInput" placeholder="Ex.: Reestruturação do site" />
-          <small>Crie uma nova área de trabalho independente.</small>
+      <div class="modal-body view-body">
+        <div class="view-section">
+          <div class="view-meta-row">
+            <span id="viewCardOwner" class="meta-chip hidden"></span>
+            <span id="viewCardDate" class="meta-chip hidden"></span>
+            <span id="viewCardColumn" class="meta-chip"></span>
+          </div>
+        </div>
+
+        <div class="view-section">
+          <h4>Descrição</h4>
+          <p id="viewCardDescription" class="view-text"></p>
+        </div>
+
+        <div class="view-section">
+          <h4>Labels</h4>
+          <div id="viewCardLabels" class="card-labels"></div>
+        </div>
+
+        <div class="view-section">
+          <div class="section-inline-header">
+            <h4>Checklist</h4>
+            <span id="viewChecklistCounter" class="counter-badge">0/0</span>
+          </div>
+          <div id="viewChecklistProgressWrap" class="progress-wrap">
+            <div class="progress-bar">
+              <div id="viewChecklistProgress" class="progress-fill"></div>
+            </div>
+          </div>
+          <div id="viewChecklistList" class="view-checklist"></div>
+        </div>
+
+        <div class="view-section">
+          <div class="section-inline-header">
+            <h4>Comentários</h4>
+            <span id="viewCommentsCounter" class="counter-badge">0</span>
+          </div>
+          <div id="viewCommentsList" class="view-comments"></div>
         </div>
       </div>
 
-      <div class="modal-footer single-end">
-        <div class="footer-actions">
-          <button id="cancelProjectModalBtn" class="secondary-btn">Cancelar</button>
-          <button id="saveProjectBtn" class="primary-btn">Criar projeto</button>
-        </div>
+      <div class="modal-footer">
+        <button id="viewEditCardBtn" class="btn btn-soft" type="button">Editar</button>
+        <button id="closeViewCardFooterBtn" class="btn btn-primary" type="button">Fechar</button>
       </div>
     </div>
   </div>
