@@ -1,4 +1,5 @@
-const STORAGE_KEY = "fcc_kanban_graphite_rose_v3";
+const STORAGE_KEY = "kanban_fcc_pro_v5";
+const THEME_KEY = "kanban_fcc_theme";
 
 const defaultColumns = () => ({
   todo: [],
@@ -10,86 +11,219 @@ let state = loadState();
 let currentProjectId = state.currentProjectId || null;
 
 if (!state.projects.length) {
-  const initialProject = createProjectObject("Projeto Inicial");
+  const initialProject = createProject("Projeto Inicial");
   state.projects.push(initialProject);
   currentProjectId = initialProject.id;
   saveState();
 }
 
-if (!currentProjectId || !state.projects.find(project => project.id === currentProjectId)) {
+if (!currentProjectId || !state.projects.find((p) => p.id === currentProjectId)) {
   currentProjectId = state.projects[0].id;
   saveState();
 }
 
-let currentModalColumn = "todo";
-let editingCardId = null;
+let currentEditingCardId = null;
+let currentTargetColumn = "todo";
+let projectModalMode = "create";
 let tempChecklist = [];
 let tempComments = [];
-let closingTimers = new WeakMap();
 
+// DOM
 const projectList = document.getElementById("projectList");
-const addProjectBtn = document.getElementById("addProjectBtn");
-const renameProjectBtn = document.getElementById("renameProjectBtn");
-const deleteProjectBtn = document.getElementById("deleteProjectBtn");
-const boardTitle = document.getElementById("boardTitle");
-const boardSubtitle = document.getElementById("boardSubtitle");
 const searchInput = document.getElementById("searchInput");
-
-const todoList = document.getElementById("todoList");
-const doingList = document.getElementById("doingList");
-const doneList = document.getElementById("doneList");
+const boardTitle = document.getElementById("boardTitle");
+const projectCount = document.getElementById("projectCount");
 
 const countTodo = document.getElementById("count-todo");
 const countDoing = document.getElementById("count-doing");
 const countDone = document.getElementById("count-done");
 
+const newProjectBtn = document.getElementById("newProjectBtn");
+const renameProjectBtn = document.getElementById("renameProjectBtn");
+const deleteProjectBtn = document.getElementById("deleteProjectBtn");
+
+const lightBtn = document.getElementById("lightBtn");
+const darkBtn = document.getElementById("darkBtn");
+
+// Modal projeto
+const projectModalOverlay = document.getElementById("projectModalOverlay");
+const projectModalTitle = document.getElementById("projectModalTitle");
+const projectNameInput = document.getElementById("projectNameInput");
+const closeProjectModalBtn = document.getElementById("closeProjectModalBtn");
+const cancelProjectBtn = document.getElementById("cancelProjectBtn");
+const saveProjectBtn = document.getElementById("saveProjectBtn");
+
+// Modal edição do card
 const cardModalOverlay = document.getElementById("cardModalOverlay");
-const modalTitle = document.getElementById("modalTitle");
-const closeModalBtn = document.getElementById("closeModalBtn");
-const cancelModalBtn = document.getElementById("cancelModalBtn");
+const cardModalTitle = document.getElementById("cardModalTitle");
+const closeCardModalBtn = document.getElementById("closeCardModalBtn");
+const cancelCardBtn = document.getElementById("cancelCardBtn");
 const saveCardBtn = document.getElementById("saveCardBtn");
 const deleteCardBtn = document.getElementById("deleteCardBtn");
 
 const cardTitleInput = document.getElementById("cardTitleInput");
-const cardDescriptionInput = document.getElementById("cardDescriptionInput");
-const cardResponsibleInput = document.getElementById("cardResponsibleInput");
+const cardDescInput = document.getElementById("cardDescInput");
+const cardOwnerInput = document.getElementById("cardOwnerInput");
 const cardDateInput = document.getElementById("cardDateInput");
 const cardLabelsInput = document.getElementById("cardLabelsInput");
 
-const checkItemInput = document.getElementById("checkItemInput");
-const addCheckItemBtn = document.getElementById("addCheckItemBtn");
-const checklistEditor = document.getElementById("checklistEditor");
+const newChecklistItemInput = document.getElementById("newChecklistItemInput");
+const addChecklistItemBtn = document.getElementById("addChecklistItemBtn");
+const editChecklistList = document.getElementById("editChecklistList");
 
-const commentInput = document.getElementById("commentInput");
+const newCommentInput = document.getElementById("newCommentInput");
 const addCommentBtn = document.getElementById("addCommentBtn");
-const commentsEditor = document.getElementById("commentsEditor");
+const editCommentsList = document.getElementById("editCommentsList");
 
-const projectModalOverlay = document.getElementById("projectModalOverlay");
-const projectNameInput = document.getElementById("projectNameInput");
-const closeProjectModalBtn = document.getElementById("closeProjectModalBtn");
-const cancelProjectModalBtn = document.getElementById("cancelProjectModalBtn");
-const saveProjectBtn = document.getElementById("saveProjectBtn");
+// Modal visualização
+const viewCardModalOverlay = document.getElementById("viewCardModalOverlay");
+const viewCardTitle = document.getElementById("viewCardTitle");
+const viewCardOwner = document.getElementById("viewCardOwner");
+const viewCardDate = document.getElementById("viewCardDate");
+const viewCardColumn = document.getElementById("viewCardColumn");
+const viewCardDescription = document.getElementById("viewCardDescription");
+const viewCardLabels = document.getElementById("viewCardLabels");
+const viewChecklistCounter = document.getElementById("viewChecklistCounter");
+const viewChecklistProgress = document.getElementById("viewChecklistProgress");
+const viewChecklistList = document.getElementById("viewChecklistList");
+const viewCommentsCounter = document.getElementById("viewCommentsCounter");
+const viewCommentsList = document.getElementById("viewCommentsList");
+const closeViewCardModalBtn = document.getElementById("closeViewCardModalBtn");
+const closeViewCardFooterBtn = document.getElementById("closeViewCardFooterBtn");
+const viewEditCardBtn = document.getElementById("viewEditCardBtn");
 
-const addCardButtons = document.querySelectorAll("[data-add-card]");
-const cardLists = {
-  todo: todoList,
-  doing: doingList,
-  done: doneList
-};
+const addCardButtons = document.querySelectorAll(".add-card-btn");
+const columnEls = document.querySelectorAll(".column");
 
-renderProjects();
-renderBoard();
-attachEvents();
+init();
+
+function init() {
+  migrateOldData();
+  applySavedTheme();
+  renderProjects();
+  renderBoard();
+  bindEvents();
+}
+
+function bindEvents() {
+  newProjectBtn.addEventListener("click", () => openProjectModal("create"));
+  renameProjectBtn.addEventListener("click", () => openProjectModal("rename"));
+  deleteProjectBtn.addEventListener("click", handleDeleteProject);
+
+  closeProjectModalBtn.addEventListener("click", closeProjectModal);
+  cancelProjectBtn.addEventListener("click", closeProjectModal);
+  saveProjectBtn.addEventListener("click", handleSaveProject);
+
+  closeCardModalBtn.addEventListener("click", closeCardModal);
+  cancelCardBtn.addEventListener("click", closeCardModal);
+  saveCardBtn.addEventListener("click", handleSaveCard);
+  deleteCardBtn.addEventListener("click", handleDeleteCard);
+
+  closeViewCardModalBtn.addEventListener("click", closeViewCardModal);
+  closeViewCardFooterBtn.addEventListener("click", closeViewCardModal);
+
+  addChecklistItemBtn.addEventListener("click", handleAddChecklistItem);
+  addCommentBtn.addEventListener("click", handleAddComment);
+
+  newChecklistItemInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddChecklistItem();
+    }
+  });
+
+  newCommentInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddComment();
+    }
+  });
+
+  searchInput.addEventListener("input", renderBoard);
+
+  lightBtn.addEventListener("click", () => setTheme("light"));
+  darkBtn.addEventListener("click", () => setTheme("dark"));
+
+  addCardButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const col = button.closest(".column").dataset.col;
+      openCardModal("create", col);
+    });
+  });
+
+  projectModalOverlay.addEventListener("click", (e) => {
+    if (e.target === projectModalOverlay) closeProjectModal();
+  });
+
+  cardModalOverlay.addEventListener("click", (e) => {
+    if (e.target === cardModalOverlay) closeCardModal();
+  });
+
+  viewCardModalOverlay.addEventListener("click", (e) => {
+    if (e.target === viewCardModalOverlay) closeViewCardModal();
+  });
+
+  viewEditCardBtn.addEventListener("click", () => {
+    const cardId = viewEditCardBtn.dataset.cardId;
+    if (!cardId) return;
+
+    const found = findCard(cardId);
+    if (!found) return;
+
+    closeViewCardModal();
+    setTimeout(() => openCardModal("edit", found.columnId, cardId), 140);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeProjectModal();
+      closeCardModal();
+      closeViewCardModal();
+    }
+  });
+
+  columnEls.forEach((column) => {
+    const cardsContainer = column.querySelector(".cards");
+
+    cardsContainer.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      cardsContainer.classList.add("drag-over");
+
+      const draggingCard = document.querySelector(".card.dragging");
+      if (!draggingCard) return;
+
+      const afterElement = getDragAfterElement(cardsContainer, e.clientY);
+      if (afterElement == null) {
+        cardsContainer.appendChild(draggingCard);
+      } else {
+        cardsContainer.insertBefore(draggingCard, afterElement);
+      }
+    });
+
+    cardsContainer.addEventListener("dragleave", () => {
+      cardsContainer.classList.remove("drag-over");
+    });
+
+    cardsContainer.addEventListener("drop", (e) => {
+      e.preventDefault();
+      cardsContainer.classList.remove("drag-over");
+
+      const draggedCardId = e.dataTransfer.getData("text/plain");
+      if (!draggedCardId) return;
+
+      const targetCol = column.dataset.col;
+      moveCardToColumnAtPosition(draggedCardId, targetCol, cardsContainer);
+    });
+  });
+}
 
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { currentProjectId: null, projects: [] };
-    const parsed = JSON.parse(raw);
-    return {
-      currentProjectId: parsed.currentProjectId || null,
-      projects: Array.isArray(parsed.projects) ? parsed.projects : []
-    };
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) {
+      return { currentProjectId: null, projects: [] };
+    }
+    return JSON.parse(saved);
   } catch {
     return { currentProjectId: null, projects: [] };
   }
@@ -104,7 +238,7 @@ function uid() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function createProjectObject(name) {
+function createProject(name) {
   return {
     id: uid(),
     name: name.trim(),
@@ -114,215 +248,41 @@ function createProjectObject(name) {
 }
 
 function getCurrentProject() {
-  return state.projects.find(project => project.id === currentProjectId);
+  return state.projects.find((project) => project.id === currentProjectId);
 }
 
-function getCardById(cardId) {
-  const project = getCurrentProject();
-  if (!project) return null;
-
-  for (const columnId of Object.keys(project.columns)) {
-    const card = project.columns[columnId].find(item => item.id === cardId);
-    if (card) return { card, columnId };
-  }
-
-  return null;
-}
-
-function attachEvents() {
-  addProjectBtn.addEventListener("click", openProjectModal);
-  renameProjectBtn.addEventListener("click", handleRenameProject);
-  deleteProjectBtn.addEventListener("click", handleDeleteProject);
-  searchInput.addEventListener("input", renderBoard);
-
-  addCardButtons.forEach(button => {
-    button.addEventListener("click", () => openModalForNewCard(button.dataset.addCard));
-  });
-
-  closeModalBtn.addEventListener("click", () => closeModal(cardModalOverlay));
-  cancelModalBtn.addEventListener("click", () => closeModal(cardModalOverlay));
-  saveCardBtn.addEventListener("click", handleSaveCard);
-  deleteCardBtn.addEventListener("click", handleDeleteCard);
-
-  addCheckItemBtn.addEventListener("click", addChecklistItemFromInput);
-  addCommentBtn.addEventListener("click", addCommentFromInput);
-
-  checkItemInput.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addChecklistItemFromInput();
-    }
-  });
-
-  commentInput.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addCommentFromInput();
-    }
-  });
-
-  closeProjectModalBtn.addEventListener("click", () => closeModal(projectModalOverlay));
-  cancelProjectModalBtn.addEventListener("click", () => closeModal(projectModalOverlay));
-  saveProjectBtn.addEventListener("click", handleAddProjectFromModal);
-  projectNameInput.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAddProjectFromModal();
-    }
-  });
-
-  [cardModalOverlay, projectModalOverlay].forEach(overlay => {
-    overlay.addEventListener("click", e => {
-      if (e.target === overlay) closeModal(overlay);
+function migrateOldData() {
+  state.projects.forEach((project) => {
+    Object.keys(project.columns).forEach((columnId) => {
+      project.columns[columnId] = project.columns[columnId].map((card) => ({
+        id: card.id || uid(),
+        title: card.title || "Sem título",
+        description: card.description || "",
+        owner: card.owner || "",
+        date: card.date || "",
+        labels: Array.isArray(card.labels) ? card.labels : [],
+        checklist: Array.isArray(card.checklist) ? card.checklist : [],
+        comments: Array.isArray(card.comments) ? card.comments : [],
+        createdAt: card.createdAt || new Date().toISOString()
+      }));
     });
   });
-
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape") {
-      if (projectModalOverlay.classList.contains("showing")) closeModal(projectModalOverlay);
-      if (cardModalOverlay.classList.contains("showing")) closeModal(cardModalOverlay);
-    }
-  });
-
-  Object.entries(cardLists).forEach(([columnId, listEl]) => {
-    listEl.addEventListener("dragover", e => {
-      e.preventDefault();
-      listEl.classList.add("drag-over");
-
-      const draggingCardEl = document.querySelector(".card.dragging");
-      if (!draggingCardEl) return;
-
-      const afterElement = getDragAfterElement(listEl, e.clientY);
-      if (afterElement == null) listEl.appendChild(draggingCardEl);
-      else listEl.insertBefore(draggingCardEl, afterElement);
-    });
-
-    listEl.addEventListener("dragleave", () => {
-      listEl.classList.remove("drag-over");
-    });
-
-    listEl.addEventListener("drop", e => {
-      e.preventDefault();
-      listEl.classList.remove("drag-over");
-      const cardId = e.dataTransfer.getData("text/plain");
-      if (!cardId) return;
-      moveCardToColumnAndPosition(cardId, columnId, listEl);
-    });
-  });
-}
-
-function openModal(overlay) {
-  clearTimeout(closingTimers.get(overlay));
-  overlay.classList.remove("hidden", "closing");
-  overlay.classList.add("showing");
-  overlay.setAttribute("aria-hidden", "false");
-
-  requestAnimationFrame(() => {
-    if (overlay === cardModalOverlay) cardTitleInput.focus();
-    if (overlay === projectModalOverlay) projectNameInput.focus();
-  });
-}
-
-function closeModal(overlay) {
-  if (overlay.classList.contains("hidden") || overlay.classList.contains("closing")) return;
-  overlay.classList.remove("showing");
-  overlay.classList.add("closing");
-  overlay.setAttribute("aria-hidden", "true");
-
-  const timer = setTimeout(() => {
-    overlay.classList.add("hidden");
-    overlay.classList.remove("closing");
-  }, 220);
-
-  closingTimers.set(overlay, timer);
-}
-
-function openProjectModal() {
-  projectNameInput.value = "";
-  openModal(projectModalOverlay);
-}
-
-function handleAddProjectFromModal() {
-  const name = projectNameInput.value.trim();
-  if (!name) {
-    projectNameInput.focus();
-    return;
-  }
-
-  const exists = state.projects.some(
-    project => project.name.toLowerCase() === name.toLowerCase()
-  );
-
-  if (exists) {
-    alert("Já existe um projeto com esse nome.");
-    projectNameInput.focus();
-    return;
-  }
-
-  const newProject = createProjectObject(name);
-  state.projects.push(newProject);
-  currentProjectId = newProject.id;
   saveState();
-  renderProjects();
-  renderBoard();
-  closeModal(projectModalOverlay);
-}
-
-function handleRenameProject() {
-  const project = getCurrentProject();
-  if (!project) return;
-
-  const newName = prompt("Novo nome do projeto:", project.name);
-  if (!newName || !newName.trim()) return;
-
-  const exists = state.projects.some(
-    p => p.id !== project.id && p.name.toLowerCase() === newName.trim().toLowerCase()
-  );
-
-  if (exists) {
-    alert("Já existe outro projeto com esse nome.");
-    return;
-  }
-
-  project.name = newName.trim();
-  saveState();
-  renderProjects();
-  renderBoard();
-}
-
-function handleDeleteProject() {
-  if (state.projects.length === 1) {
-    alert("Você precisa manter pelo menos 1 projeto.");
-    return;
-  }
-
-  const project = getCurrentProject();
-  if (!project) return;
-
-  const confirmed = confirm(`Deseja realmente excluir o projeto "${project.name}"?`);
-  if (!confirmed) return;
-
-  state.projects = state.projects.filter(p => p.id !== project.id);
-  currentProjectId = state.projects[0].id;
-  saveState();
-  renderProjects();
-  renderBoard();
 }
 
 function renderProjects() {
-  const project = getCurrentProject();
-  if (project) boardTitle.textContent = project.name;
-
   projectList.innerHTML = "";
 
-  state.projects.forEach(projectItem => {
+  state.projects.forEach((project) => {
     const li = document.createElement("li");
-    li.textContent = projectItem.name;
+    li.textContent = project.name;
 
-    if (projectItem.id === currentProjectId) li.classList.add("active");
+    if (project.id === currentProjectId) {
+      li.classList.add("active");
+    }
 
     li.addEventListener("click", () => {
-      currentProjectId = projectItem.id;
+      currentProjectId = project.id;
       saveState();
       renderProjects();
       renderBoard();
@@ -337,367 +297,623 @@ function renderBoard() {
   if (!project) return;
 
   boardTitle.textContent = project.name;
-  boardSubtitle.textContent = `${state.projects.length} projeto(s) no total`;
+  projectCount.textContent = `${state.projects.length} projeto(s) no total`;
 
-  const term = searchInput.value.trim().toLowerCase();
-  renderColumn("todo", project.columns.todo, todoList, term);
-  renderColumn("doing", project.columns.doing, doingList, term);
-  renderColumn("done", project.columns.done, doneList, term);
-  updateCounts(project);
-}
+  renderColumn("todo", project.columns.todo);
+  renderColumn("doing", project.columns.doing);
+  renderColumn("done", project.columns.done);
 
-function renderColumn(columnId, cards, targetEl, term = "") {
-  targetEl.innerHTML = "";
-
-  const filteredCards = cards.filter(card => {
-    if (!term) return true;
-    const searchable = [
-      card.title,
-      card.description,
-      card.responsible,
-      ...(card.labels || []),
-      ...(card.comments || []).map(c => c.text)
-    ].join(" ").toLowerCase();
-    return searchable.includes(term);
-  });
-
-  if (!filteredCards.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state";
-    empty.textContent = term ? "Nenhum card encontrado." : "Nenhum card nesta coluna.";
-    targetEl.appendChild(empty);
-    return;
-  }
-
-  filteredCards.forEach(card => targetEl.appendChild(createCardElement(card, columnId)));
-}
-
-function updateCounts(project) {
   countTodo.textContent = project.columns.todo.length;
   countDoing.textContent = project.columns.doing.length;
   countDone.textContent = project.columns.done.length;
 }
 
-function createCardElement(card, columnId) {
-  const cardEl = document.createElement("div");
-  cardEl.className = "card";
-  cardEl.draggable = true;
-  cardEl.dataset.cardId = card.id;
-  cardEl.dataset.columnId = columnId;
+function renderColumn(columnId, cards) {
+  const container = document.querySelector(`.column[data-col="${columnId}"] .cards`);
+  container.innerHTML = "";
 
-  const labelsHtml = (card.labels || [])
-    .map(label => `<span class="label-pill">${escapeHtml(label)}</span>`)
-    .join("");
+  const query = searchInput.value.trim().toLowerCase();
 
-  const descPreview = card.description ? escapeHtml(truncate(card.description, 110)) : "Sem descrição";
-  const checklist = card.checklist || [];
-  const doneCount = checklist.filter(item => item.done).length;
-  const totalCount = checklist.length;
-  const progress = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
+  const filtered = cards.filter((card) => {
+    if (!query) return true;
 
-  const metaChips = [];
-  if (card.responsible) metaChips.push(`<span class="meta-chip">👤 ${escapeHtml(card.responsible)}</span>`);
-  if (card.date) metaChips.push(`<span class="meta-chip">📅 ${formatDate(card.date)}</span>`);
+    const searchText = [
+      card.title,
+      card.description,
+      card.owner,
+      ...(card.labels || []),
+      ...(card.comments || []).map((c) => c.text),
+      ...(card.checklist || []).map((i) => i.text)
+    ].join(" ").toLowerCase();
 
-  cardEl.innerHTML = `
-    <h4 class="card-title">${escapeHtml(card.title)}</h4>
-    <p class="card-desc">${descPreview}</p>
-    ${labelsHtml ? `<div class="card-labels">${labelsHtml}</div>` : ""}
-    ${metaChips.length ? `<div class="card-meta">${metaChips.join("")}</div>` : ""}
-    ${
-      totalCount
-        ? `
-      <div class="card-progress">
-        <div class="progress-top">
-          <span>Checklist</span>
-          <span>${doneCount}/${totalCount}</span>
+    return searchText.includes(query);
+  });
+
+  if (!filtered.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = query ? "Nenhum card encontrado." : "Nenhum card nesta coluna.";
+    container.appendChild(empty);
+    return;
+  }
+
+  filtered.forEach((card) => {
+    const cardEl = document.createElement("article");
+    cardEl.className = "card";
+    cardEl.draggable = true;
+    cardEl.dataset.cardId = card.id;
+
+    const labelsHtml = (card.labels || [])
+      .filter(Boolean)
+      .map((label) => `<span class="label">${escapeHtml(label)}</span>`)
+      .join("");
+
+    const meta = [];
+    if (card.owner) meta.push(`<span class="meta-chip">👤 ${escapeHtml(card.owner)}</span>`);
+    if (card.date) meta.push(`<span class="meta-chip">Prazo: ${formatDate(card.date)}</span>`);
+
+    const checklist = card.checklist || [];
+    const doneItems = checklist.filter((item) => item.done).length;
+    const checklistPercent = checklist.length ? Math.round((doneItems / checklist.length) * 100) : 0;
+
+    const checklistPreviewHtml = checklist.length
+      ? `
+        <div class="card-checklist">
+          <div class="card-checklist-title">
+            <span>Checklist</span>
+            <span>${doneItems}/${checklist.length}</span>
+          </div>
+          <div class="card-checklist-items">
+            ${checklist.slice(0, 3).map((item) => `
+              <div class="card-check-item ${item.done ? "done" : ""}">
+                <span class="card-check-bullet"></span>
+                <span>${escapeHtml(item.text)}</span>
+              </div>
+            `).join("")}
+          </div>
+          <div class="card-progress">
+            <div class="card-progress-fill" style="width:${checklistPercent}%"></div>
+          </div>
         </div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${progress}%"></div>
+      `
+      : "";
+
+    const commentsCount = (card.comments || []).length;
+
+    cardEl.innerHTML = `
+      <h4 class="card-title">${escapeHtml(card.title || "Sem título")}</h4>
+      <p class="card-desc">${escapeHtml(truncate(card.description || "Sem descrição.", 140))}</p>
+      ${labelsHtml ? `<div class="card-labels">${labelsHtml}</div>` : ""}
+      ${meta.length ? `<div class="card-meta">${meta.join("")}</div>` : ""}
+      ${checklistPreviewHtml}
+      <div class="card-comments-row">
+        <span class="card-comments-info">💬 ${commentsCount} comentário(s)</span>
+        <div class="card-actions">
+          <button class="btn btn-soft btn-sm edit-card-btn" type="button">Editar</button>
         </div>
-      </div>`
-        : ""
-    }
-    <div class="card-footer">
-      <span class="card-comments">💬 ${(card.comments || []).length} comentário(s)</span>
-      <div class="card-actions">
-        <button class="card-btn" data-action="edit">Editar</button>
       </div>
-    </div>
-  `;
+    `;
 
-  cardEl.querySelector('[data-action="edit"]').addEventListener("click", e => {
-    e.stopPropagation();
-    openModalForEdit(card.id);
+    cardEl.addEventListener("click", (e) => {
+      const clickedEditButton = e.target.closest(".edit-card-btn");
+      if (clickedEditButton) return;
+      openViewCardModal(card.id);
+    });
+
+    const editBtn = cardEl.querySelector(".edit-card-btn");
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openCardModal("edit", columnId, card.id);
+    });
+
+    cardEl.addEventListener("dragstart", (e) => {
+      cardEl.classList.add("dragging");
+      e.dataTransfer.setData("text/plain", card.id);
+      e.dataTransfer.effectAllowed = "move";
+    });
+
+    cardEl.addEventListener("dragend", () => {
+      cardEl.classList.remove("dragging");
+      document.querySelectorAll(".cards").forEach((el) => el.classList.remove("drag-over"));
+    });
+
+    container.appendChild(cardEl);
   });
-
-  cardEl.addEventListener("dblclick", () => openModalForEdit(card.id));
-
-  cardEl.addEventListener("dragstart", e => {
-    cardEl.classList.add("dragging");
-    e.dataTransfer.setData("text/plain", card.id);
-    e.dataTransfer.effectAllowed = "move";
-  });
-
-  cardEl.addEventListener("dragend", () => {
-    cardEl.classList.remove("dragging");
-    Object.values(cardLists).forEach(list => list.classList.remove("drag-over"));
-  });
-
-  return cardEl;
 }
 
-function openModalForNewCard(columnId) {
-  currentModalColumn = columnId;
-  editingCardId = null;
+function openProjectModal(mode) {
+  projectModalMode = mode;
+
+  if (mode === "create") {
+    projectModalTitle.textContent = "Novo Projeto";
+    projectNameInput.value = "";
+  } else {
+    const project = getCurrentProject();
+    if (!project) return;
+    projectModalTitle.textContent = "Renomear Projeto";
+    projectNameInput.value = project.name;
+  }
+
+  openModal(projectModalOverlay);
+
+  setTimeout(() => {
+    projectNameInput.focus();
+    projectNameInput.select();
+  }, 90);
+}
+
+function closeProjectModal() {
+  closeModal(projectModalOverlay);
+}
+
+function handleSaveProject() {
+  const name = projectNameInput.value.trim();
+  if (!name) {
+    alert("Digite um nome para o projeto.");
+    projectNameInput.focus();
+    return;
+  }
+
+  if (projectModalMode === "create") {
+    const exists = state.projects.some(
+      (project) => project.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (exists) {
+      alert("Já existe um projeto com esse nome.");
+      return;
+    }
+
+    const newProject = createProject(name);
+    state.projects.push(newProject);
+    currentProjectId = newProject.id;
+  } else {
+    const currentProject = getCurrentProject();
+    if (!currentProject) return;
+
+    const exists = state.projects.some(
+      (project) =>
+        project.id !== currentProject.id &&
+        project.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (exists) {
+      alert("Já existe outro projeto com esse nome.");
+      return;
+    }
+
+    currentProject.name = name;
+  }
+
+  saveState();
+  renderProjects();
+  renderBoard();
+  closeProjectModal();
+}
+
+function handleDeleteProject() {
+  if (state.projects.length <= 1) {
+    alert("Você precisa manter pelo menos 1 projeto.");
+    return;
+  }
+
+  const project = getCurrentProject();
+  if (!project) return;
+
+  const ok = confirm(`Deseja excluir o projeto "${project.name}"?`);
+  if (!ok) return;
+
+  state.projects = state.projects.filter((p) => p.id !== project.id);
+  currentProjectId = state.projects[0].id;
+  saveState();
+  renderProjects();
+  renderBoard();
+}
+
+function openCardModal(mode, columnId, cardId = null) {
+  currentTargetColumn = columnId;
+  currentEditingCardId = null;
   tempChecklist = [];
   tempComments = [];
 
-  modalTitle.textContent = "Novo Card";
-  deleteCardBtn.classList.add("hidden");
+  if (mode === "create") {
+    cardModalTitle.textContent = "Novo Card";
+    deleteCardBtn.classList.add("hidden");
 
-  cardTitleInput.value = "";
-  cardDescriptionInput.value = "";
-  cardResponsibleInput.value = "";
-  cardDateInput.value = "";
-  cardLabelsInput.value = "";
+    cardTitleInput.value = "";
+    cardDescInput.value = "";
+    cardOwnerInput.value = "";
+    cardDateInput.value = "";
+    cardLabelsInput.value = "";
+  } else {
+    const found = findCard(cardId);
+    if (!found) return;
 
-  renderChecklistEditor();
-  renderCommentsEditor();
+    currentEditingCardId = cardId;
+    currentTargetColumn = found.columnId;
+    deleteCardBtn.classList.remove("hidden");
+    cardModalTitle.textContent = "Editar Card";
+
+    cardTitleInput.value = found.card.title || "";
+    cardDescInput.value = found.card.description || "";
+    cardOwnerInput.value = found.card.owner || "";
+    cardDateInput.value = found.card.date || "";
+    cardLabelsInput.value = (found.card.labels || []).join(", ");
+    tempChecklist = clone(found.card.checklist || []);
+    tempComments = clone(found.card.comments || []);
+  }
+
+  renderEditChecklist();
+  renderEditComments();
   openModal(cardModalOverlay);
+
+  setTimeout(() => {
+    cardTitleInput.focus();
+    cardTitleInput.select();
+  }, 90);
 }
 
-function openModalForEdit(cardId) {
-  const found = getCardById(cardId);
-  if (!found) return;
-
-  const { card, columnId } = found;
-  currentModalColumn = columnId;
-  editingCardId = card.id;
-  tempChecklist = structuredCloneSafe(card.checklist || []);
-  tempComments = structuredCloneSafe(card.comments || []);
-
-  modalTitle.textContent = "Editar Card";
-  deleteCardBtn.classList.remove("hidden");
-
-  cardTitleInput.value = card.title || "";
-  cardDescriptionInput.value = card.description || "";
-  cardResponsibleInput.value = card.responsible || "";
-  cardDateInput.value = card.date || "";
-  cardLabelsInput.value = (card.labels || []).join(", ");
-
-  renderChecklistEditor();
-  renderCommentsEditor();
-  openModal(cardModalOverlay);
+function closeCardModal() {
+  closeModal(cardModalOverlay);
 }
 
 function handleSaveCard() {
   const title = cardTitleInput.value.trim();
   if (!title) {
+    alert("Digite um título para o card.");
     cardTitleInput.focus();
     return;
   }
 
-  const found = editingCardId ? getCardById(editingCardId) : null;
-
-  const cardData = {
-    id: editingCardId || uid(),
-    title,
-    description: cardDescriptionInput.value.trim(),
-    responsible: cardResponsibleInput.value.trim(),
-    date: cardDateInput.value || "",
-    labels: cardLabelsInput.value.split(",").map(item => item.trim()).filter(Boolean),
-    checklist: tempChecklist,
-    comments: tempComments,
-    createdAt: found?.card?.createdAt || new Date().toISOString()
-  };
-
   const project = getCurrentProject();
   if (!project) return;
 
-  if (editingCardId && found) {
-    project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== editingCardId);
+  const cardData = {
+    id: currentEditingCardId || uid(),
+    title,
+    description: cardDescInput.value.trim(),
+    owner: cardOwnerInput.value.trim(),
+    date: cardDateInput.value,
+    labels: cardLabelsInput.value
+      .split(",")
+      .map((label) => label.trim())
+      .filter(Boolean),
+    checklist: clone(tempChecklist),
+    comments: clone(tempComments),
+    createdAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.createdAt || new Date().toISOString()) : new Date().toISOString()
+  };
+
+  if (currentEditingCardId) {
+    const found = findCard(currentEditingCardId);
+    if (!found) return;
+
+    project.columns[found.columnId] = project.columns[found.columnId].filter(
+      (card) => card.id !== currentEditingCardId
+    );
+    project.columns[currentTargetColumn].push(cardData);
+  } else {
+    project.columns[currentTargetColumn].push(cardData);
   }
 
-  project.columns[currentModalColumn].push(cardData);
   saveState();
   renderBoard();
-  closeModal(cardModalOverlay);
+  closeCardModal();
 }
 
 function handleDeleteCard() {
-  if (!editingCardId) return;
+  if (!currentEditingCardId) return;
 
-  const confirmed = confirm("Deseja realmente excluir este card?");
-  if (!confirmed) return;
+  const ok = confirm("Deseja excluir este card?");
+  if (!ok) return;
 
   const project = getCurrentProject();
   if (!project) return;
 
-  const found = getCardById(editingCardId);
+  const found = findCard(currentEditingCardId);
   if (!found) return;
 
-  const cardEl = document.querySelector(`[data-card-id="${editingCardId}"]`);
-  const removeCard = () => {
-    project.columns[found.columnId] = project.columns[found.columnId].filter(card => card.id !== editingCardId);
-    saveState();
-    renderBoard();
-    closeModal(cardModalOverlay);
-  };
+  project.columns[found.columnId] = project.columns[found.columnId].filter(
+    (card) => card.id !== currentEditingCardId
+  );
 
-  if (cardEl) {
-    cardEl.classList.add("removing");
-    setTimeout(removeCard, 170);
-  } else {
-    removeCard();
-  }
+  saveState();
+  renderBoard();
+  closeCardModal();
 }
 
-function addChecklistItemFromInput() {
-  const text = checkItemInput.value.trim();
+function handleAddChecklistItem() {
+  const text = newChecklistItemInput.value.trim();
   if (!text) return;
 
-  tempChecklist.push({ id: uid(), text, done: false });
-  checkItemInput.value = "";
-  renderChecklistEditor();
+  tempChecklist.push({
+    id: uid(),
+    text,
+    done: false
+  });
+
+  newChecklistItemInput.value = "";
+  renderEditChecklist();
 }
 
-function addCommentFromInput() {
-  const text = commentInput.value.trim();
+function handleAddComment() {
+  const text = newCommentInput.value.trim();
   if (!text) return;
 
-  tempComments.push({ id: uid(), text, createdAt: new Date().toISOString() });
-  commentInput.value = "";
-  renderCommentsEditor();
+  tempComments.push({
+    id: uid(),
+    text,
+    createdAt: new Date().toISOString()
+  });
+
+  newCommentInput.value = "";
+  renderEditComments();
 }
 
-function renderChecklistEditor() {
-  checklistEditor.innerHTML = "";
+function renderEditChecklist() {
+  editChecklistList.innerHTML = "";
 
   if (!tempChecklist.length) {
-    checklistEditor.innerHTML = `<li class="empty-state">Nenhum item no checklist.</li>`;
+    editChecklistList.innerHTML = `<div class="empty-state">Nenhum item no checklist.</div>`;
     return;
   }
 
-  tempChecklist.forEach(item => {
-    const li = document.createElement("li");
-    li.className = "editable-item";
-    li.innerHTML = `
-      <div class="editable-item-left">
+  tempChecklist.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "edit-item";
+
+    row.innerHTML = `
+      <div class="edit-item-left">
         <input type="checkbox" ${item.done ? "checked" : ""} />
         <span>${escapeHtml(item.text)}</span>
       </div>
-      <button type="button">Remover</button>
+      <button class="btn btn-soft btn-sm" type="button">Remover</button>
     `;
 
-    li.querySelector('input[type="checkbox"]').addEventListener("change", e => {
-      item.done = e.target.checked;
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    const removeBtn = row.querySelector("button");
+
+    checkbox.addEventListener("change", () => {
+      item.done = checkbox.checked;
     });
 
-    li.querySelector("button").addEventListener("click", () => {
-      tempChecklist = tempChecklist.filter(check => check.id !== item.id);
-      renderChecklistEditor();
+    removeBtn.addEventListener("click", () => {
+      tempChecklist = tempChecklist.filter((check) => check.id !== item.id);
+      renderEditChecklist();
     });
 
-    checklistEditor.appendChild(li);
+    editChecklistList.appendChild(row);
   });
 }
 
-function renderCommentsEditor() {
-  commentsEditor.innerHTML = "";
+function renderEditComments() {
+  editCommentsList.innerHTML = "";
 
   if (!tempComments.length) {
-    commentsEditor.innerHTML = `<li class="empty-state">Nenhum comentário.</li>`;
+    editCommentsList.innerHTML = `<div class="empty-state">Nenhum comentário.</div>`;
     return;
   }
 
-  tempComments.forEach(comment => {
-    const li = document.createElement("li");
-    li.className = "editable-item";
-    li.innerHTML = `
-      <div class="editable-item-left">
+  tempComments.forEach((comment) => {
+    const row = document.createElement("div");
+    row.className = "edit-item";
+
+    row.innerHTML = `
+      <div class="edit-item-left">
         <span>${escapeHtml(comment.text)}</span>
       </div>
-      <button type="button">Remover</button>
+      <button class="btn btn-soft btn-sm" type="button">Remover</button>
     `;
 
-    li.querySelector("button").addEventListener("click", () => {
-      tempComments = tempComments.filter(c => c.id !== comment.id);
-      renderCommentsEditor();
+    row.querySelector("button").addEventListener("click", () => {
+      tempComments = tempComments.filter((c) => c.id !== comment.id);
+      renderEditComments();
     });
 
-    commentsEditor.appendChild(li);
+    editCommentsList.appendChild(row);
   });
 }
 
-function moveCardToColumnAndPosition(cardId, targetColumnId, targetListEl) {
+function openViewCardModal(cardId) {
+  const found = findCard(cardId);
+  if (!found) return;
+
+  const { card, columnId } = found;
+
+  viewCardTitle.textContent = card.title || "Sem título";
+  viewCardDescription.textContent = card.description || "Sem descrição.";
+  viewCardColumn.textContent = `Coluna: ${columnLabel(columnId)}`;
+
+  if (card.owner) {
+    viewCardOwner.textContent = `👤 ${card.owner}`;
+    viewCardOwner.classList.remove("hidden");
+  } else {
+    viewCardOwner.classList.add("hidden");
+  }
+
+  if (card.date) {
+    viewCardDate.textContent = `Prazo: ${formatDate(card.date)}`;
+    viewCardDate.classList.remove("hidden");
+  } else {
+    viewCardDate.classList.add("hidden");
+  }
+
+  viewCardLabels.innerHTML = "";
+  if ((card.labels || []).length) {
+    card.labels.forEach((label) => {
+      const span = document.createElement("span");
+      span.className = "label";
+      span.textContent = label;
+      viewCardLabels.appendChild(span);
+    });
+  } else {
+    viewCardLabels.innerHTML = `<div class="empty-state">Nenhuma label.</div>`;
+  }
+
+  const checklist = card.checklist || [];
+  const doneItems = checklist.filter((item) => item.done).length;
+  const percent = checklist.length ? Math.round((doneItems / checklist.length) * 100) : 0;
+
+  viewChecklistCounter.textContent = `${doneItems}/${checklist.length}`;
+  viewChecklistProgress.style.width = `${percent}%`;
+  viewChecklistList.innerHTML = "";
+
+  if (checklist.length) {
+    checklist.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = `view-check-item ${item.done ? "done" : ""}`;
+      row.innerHTML = `
+        <span class="view-check-bullet"></span>
+        <span>${escapeHtml(item.text)}</span>
+      `;
+      viewChecklistList.appendChild(row);
+    });
+  } else {
+    viewChecklistList.innerHTML = `<div class="empty-state">Nenhum item no checklist.</div>`;
+  }
+
+  const comments = card.comments || [];
+  viewCommentsCounter.textContent = `${comments.length}`;
+  viewCommentsList.innerHTML = "";
+
+  if (comments.length) {
+    comments.forEach((comment) => {
+      const row = document.createElement("div");
+      row.className = "view-comment-item";
+      row.innerHTML = `
+        <div>${escapeHtml(comment.text)}</div>
+        <div class="view-comment-meta">${formatDateTime(comment.createdAt)}</div>
+      `;
+      viewCommentsList.appendChild(row);
+    });
+  } else {
+    viewCommentsList.innerHTML = `<div class="empty-state">Nenhum comentário.</div>`;
+  }
+
+  viewEditCardBtn.dataset.cardId = card.id;
+  openModal(viewCardModalOverlay);
+}
+
+function closeViewCardModal() {
+  closeModal(viewCardModalOverlay);
+}
+
+function findCard(cardId) {
+  const project = getCurrentProject();
+  if (!project) return null;
+
+  for (const columnId of Object.keys(project.columns)) {
+    const card = project.columns[columnId].find((item) => item.id === cardId);
+    if (card) {
+      return { card, columnId };
+    }
+  }
+
+  return null;
+}
+
+function moveCardToColumnAtPosition(cardId, targetColumnId, targetContainer) {
   const project = getCurrentProject();
   if (!project) return;
 
   let draggedCard = null;
-  let sourceColumnId = null;
 
   for (const columnId of Object.keys(project.columns)) {
-    const index = project.columns[columnId].findIndex(card => card.id === cardId);
+    const index = project.columns[columnId].findIndex((card) => card.id === cardId);
     if (index !== -1) {
-      draggedCard = project.columns[columnId][index];
-      sourceColumnId = columnId;
-      project.columns[columnId].splice(index, 1);
+      draggedCard = project.columns[columnId].splice(index, 1)[0];
       break;
     }
   }
 
   if (!draggedCard) return;
 
-  const cardElementsOrder = [...targetListEl.querySelectorAll(".card")]
-    .map(el => el.dataset.cardId)
+  const orderedIds = [...targetContainer.querySelectorAll(".card")]
+    .map((el) => el.dataset.cardId)
     .filter(Boolean);
 
-  const insertIndex = cardElementsOrder.indexOf(cardId);
-  if (insertIndex === -1) project.columns[targetColumnId].push(draggedCard);
-  else project.columns[targetColumnId].splice(insertIndex, 0, draggedCard);
+  const insertIndex = orderedIds.indexOf(cardId);
+
+  if (insertIndex === -1) {
+    project.columns[targetColumnId].push(draggedCard);
+  } else {
+    project.columns[targetColumnId].splice(insertIndex, 0, draggedCard);
+  }
 
   saveState();
   renderBoard();
-
-  if (sourceColumnId !== targetColumnId) {
-    boardSubtitle.textContent = `Card movido para "${columnName(targetColumnId)}"`;
-    setTimeout(() => {
-      const project = getCurrentProject();
-      if (project) boardSubtitle.textContent = `${state.projects.length} projeto(s) no total`;
-    }, 1500);
-  }
 }
 
-function getDragAfterElement(container, y) {
-  const draggableElements = [...container.querySelectorAll(".card:not(.dragging)")];
+function getDragAfterElement(container, mouseY) {
+  const draggableCards = [...container.querySelectorAll(".card:not(.dragging)")];
 
-  return draggableElements.reduce(
+  return draggableCards.reduce(
     (closest, child) => {
       const box = child.getBoundingClientRect();
-      const offset = y - box.top - box.height / 2;
-      if (offset < 0 && offset > closest.offset) return { offset, element: child };
+      const offset = mouseY - box.top - box.height / 2;
+
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, element: child };
+      }
+
       return closest;
     },
     { offset: Number.NEGATIVE_INFINITY, element: null }
   ).element;
 }
 
-function columnName(columnId) {
-  return { todo: "A Fazer", doing: "Em Progresso", done: "Concluído" }[columnId] || columnId;
+function openModal(overlay) {
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function closeModal(overlay) {
+  overlay.classList.add("hidden");
+  overlay.setAttribute("aria-hidden", "true");
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(THEME_KEY, theme);
+  updateThemeButtons(theme);
+}
+
+function applySavedTheme() {
+  const savedTheme = localStorage.getItem(THEME_KEY) || "dark";
+  document.documentElement.setAttribute("data-theme", savedTheme);
+  updateThemeButtons(savedTheme);
+}
+
+function updateThemeButtons(theme) {
+  lightBtn.classList.toggle("active", theme === "light");
+  darkBtn.classList.toggle("active", theme === "dark");
+}
+
+function columnLabel(columnId) {
+  const map = {
+    todo: "A Fazer",
+    doing: "Em Progresso",
+    done: "Concluído"
+  };
+  return map[columnId] || columnId;
 }
 
 function truncate(text, max) {
-  if (!text) return "";
   return text.length > max ? `${text.slice(0, max).trim()}...` : text;
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return "";
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString("pt-BR");
+function formatDate(dateString) {
+  if (!dateString) return "";
+  const date = new Date(`${dateString}T00:00:00`);
+  return date.toLocaleDateString("pt-BR");
 }
 
-function structuredCloneSafe(data) {
+function formatDateTime(dateString) {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  return date.toLocaleString("pt-BR");
+}
+
+function clone(data) {
   return JSON.parse(JSON.stringify(data));
 }
 
