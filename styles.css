@@ -86,6 +86,11 @@ textarea {
   display: grid;
   grid-template-columns: 320px 1fr;
   min-height: 100vh;
+  transition: grid-template-columns 0.28s ease;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
 }
 
 .sidebar {
@@ -93,6 +98,17 @@ textarea {
   border-right: 1px solid var(--line);
   background: var(--sidebar);
   backdrop-filter: blur(18px);
+  overflow: hidden;
+  transition: opacity 0.24s ease, transform 0.24s ease, padding 0.24s ease, border-color 0.24s ease;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-14px);
+  padding-left: 0;
+  padding-right: 0;
+  border-right-color: transparent;
 }
 
 .brand-card {
@@ -206,6 +222,78 @@ textarea {
   resize: vertical;
 }
 
+.dashboard-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.dashboard-panel::before {
+  content: "";
+  position: absolute;
+  inset: -30% auto auto 65%;
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(196, 59, 115, 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+.dashboard-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dashboard-stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+html[data-theme="light"] .dashboard-stat {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.dashboard-stat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.dashboard-stat-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dashboard-stat-copy strong {
+  font-size: 1.28rem;
+  line-height: 1.1;
+  order: 2;
+}
+
+.dashboard-stat-copy span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0;
+  order: 1;
+}
+
+.dashboard-stat-primary .dashboard-stat-icon { background: rgba(112, 136, 255, 0.16); }
+.dashboard-stat-success .dashboard-stat-icon { background: rgba(85, 183, 131, 0.16); }
+.dashboard-stat-warning .dashboard-stat-icon { background: rgba(255, 186, 92, 0.16); }
+.dashboard-stat-accent .dashboard-stat-icon { background: rgba(196, 59, 115, 0.16); }
+
 .theme-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -213,8 +301,40 @@ textarea {
 }
 
 .main-area {
+  position: relative;
   padding: 24px;
   overflow: auto;
+}
+
+.sidebar-toggle {
+  position: fixed;
+  top: 18px;
+  left: 336px;
+  z-index: 80;
+  width: 48px;
+  height: 48px;
+  display: inline-grid;
+  place-items: center;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(12px);
+  font-size: 1.2rem;
+}
+
+html[data-theme="light"] .sidebar-toggle {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.sidebar-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.app-shell.sidebar-collapsed .sidebar-toggle {
+  left: 16px;
 }
 
 .topbar {
@@ -223,6 +343,11 @@ textarea {
   gap: 18px;
   align-items: center;
   margin-bottom: 18px;
+  padding-left: 52px;
+}
+
+.app-shell.sidebar-collapsed .topbar {
+  padding-left: 64px;
 }
 
 .topbar h2 {
@@ -843,4 +968,37 @@ html[data-theme="light"] .view-comment-item {
     width: 100%;
     flex-direction: column;
   }
+}
+
+@media (max-width: 980px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.inline-add-view {
+  margin-bottom: 10px;
+}
+
+.view-check-item.is-clickable {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--line);
+}
+
+.view-check-item.is-clickable:hover {
+  background: rgba(196, 59, 115, 0.06);
+}
+
+.view-comment-text {
+  line-height: 1.45;
+}
+
+.view-comment-meta-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
