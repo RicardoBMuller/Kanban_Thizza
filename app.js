@@ -113,6 +113,25 @@ function init() {
   renderProjects();
   renderBoard();
   bindEvents();
+  runIntroSplash();
+}
+
+
+function runIntroSplash() {
+  const splash = document.getElementById("introSplash");
+  if (!splash) return;
+
+  requestAnimationFrame(() => {
+    document.body.classList.add("is-app-ready");
+  });
+
+  setTimeout(() => {
+    splash.classList.add("is-hidden");
+  }, 1800);
+
+  setTimeout(() => {
+    splash.remove();
+  }, 2600);
 }
 
 function bindEvents() {
