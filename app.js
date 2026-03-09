@@ -1,5 +1,6 @@
 const STORAGE_KEY = "kanban_fcc_pro_v5";
 const THEME_KEY = "kanban_fcc_theme";
+const SIDEBAR_KEY = "kanban_fcc_sidebar_collapsed";
 
 const defaultColumns = () => ({
   todo: [],
@@ -32,6 +33,12 @@ let tempComments = [];
 const projectList = document.getElementById("projectList");
 const searchInput = document.getElementById("searchInput");
 const boardTitle = document.getElementById("boardTitle");
+const sidebarToggleBtn = document.getElementById("sidebarToggleBtn");
+const appShell = document.querySelector(".app-shell");
+const dashTotalCards = document.getElementById("dashTotalCards");
+const dashCompletedCards = document.getElementById("dashCompletedCards");
+const dashOverdueCards = document.getElementById("dashOverdueCards");
+const dashChecklistDone = document.getElementById("dashChecklistDone");
 const projectCount = document.getElementById("projectCount");
 
 const countTodo = document.getElementById("count-todo");
@@ -83,6 +90,8 @@ const viewCardDate = document.getElementById("viewCardDate");
 const viewCardColumn = document.getElementById("viewCardColumn");
 const viewCardDescription = document.getElementById("viewCardDescription");
 const viewCardLabels = document.getElementById("viewCardLabels");
+const viewNewCommentInput = document.getElementById("viewNewCommentInput");
+const viewAddCommentBtn = document.getElementById("viewAddCommentBtn");
 const viewChecklistCounter = document.getElementById("viewChecklistCounter");
 const viewChecklistProgress = document.getElementById("viewChecklistProgress");
 const viewChecklistList = document.getElementById("viewChecklistList");
@@ -100,6 +109,7 @@ init();
 function init() {
   migrateOldData();
   applySavedTheme();
+  applySavedSidebar();
   renderProjects();
   renderBoard();
   bindEvents();
@@ -143,6 +153,7 @@ function bindEvents() {
 
   lightBtn.addEventListener("click", () => setTheme("light"));
   darkBtn.addEventListener("click", () => setTheme("dark"));
+  sidebarToggleBtn.addEventListener("click", toggleSidebar);
 
   addCardButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -172,6 +183,14 @@ function bindEvents() {
 
     closeViewCardModal();
     setTimeout(() => openCardModal("edit", found.columnId, cardId), 140);
+  });
+
+  viewAddCommentBtn.addEventListener("click", handleViewAddComment);
+  viewNewCommentInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleViewAddComment();
+    }
   });
 
   document.addEventListener("keydown", (e) => {
@@ -306,6 +325,8 @@ function renderBoard() {
   countTodo.textContent = project.columns.todo.length;
   countDoing.textContent = project.columns.doing.length;
   countDone.textContent = project.columns.done.length;
+
+  updateDashboard(project);
 }
 
 function renderColumn(columnId, cards) {
@@ -759,12 +780,19 @@ function openViewCardModal(cardId) {
 
   if (checklist.length) {
     checklist.forEach((item) => {
-      const row = document.createElement("div");
-      row.className = `view-check-item ${item.done ? "done" : ""}`;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = `view-check-item is-clickable ${item.done ? "done" : ""}`;
       row.innerHTML = `
         <span class="view-check-bullet"></span>
         <span>${escapeHtml(item.text)}</span>
       `;
+      row.addEventListener("click", () => {
+        item.done = !item.done;
+        saveState();
+        openViewCardModal(card.id);
+        renderBoard();
+      });
       viewChecklistList.appendChild(row);
     });
   } else {
@@ -780,9 +808,18 @@ function openViewCardModal(cardId) {
       const row = document.createElement("div");
       row.className = "view-comment-item";
       row.innerHTML = `
-        <div>${escapeHtml(comment.text)}</div>
-        <div class="view-comment-meta">${formatDateTime(comment.createdAt)}</div>
+        <div class="view-comment-text">${escapeHtml(comment.text)}</div>
+        <div class="view-comment-meta-row">
+          <div class="view-comment-meta">${formatDateTime(comment.createdAt)}</div>
+          <button type="button" class="btn btn-soft btn-sm">Remover</button>
+        </div>
       `;
+      row.querySelector("button").addEventListener("click", () => {
+        card.comments = (card.comments || []).filter((c) => c.id !== comment.id);
+        saveState();
+        openViewCardModal(card.id);
+        renderBoard();
+      });
       viewCommentsList.appendChild(row);
     });
   } else {
@@ -794,7 +831,29 @@ function openViewCardModal(cardId) {
 }
 
 function closeViewCardModal() {
+  viewNewCommentInput.value = "";
   closeModal(viewCardModalOverlay);
+}
+
+function handleViewAddComment() {
+  const cardId = viewEditCardBtn.dataset.cardId;
+  const text = viewNewCommentInput.value.trim();
+  if (!cardId || !text) return;
+
+  const found = findCard(cardId);
+  if (!found) return;
+
+  if (!Array.isArray(found.card.comments)) found.card.comments = [];
+  found.card.comments.push({
+    id: uid(),
+    text,
+    createdAt: new Date().toISOString()
+  });
+
+  viewNewCommentInput.value = "";
+  saveState();
+  openViewCardModal(cardId);
+  renderBoard();
 }
 
 function findCard(cardId) {
@@ -886,6 +945,53 @@ function applySavedTheme() {
 function updateThemeButtons(theme) {
   lightBtn.classList.toggle("active", theme === "light");
   darkBtn.classList.toggle("active", theme === "dark");
+}
+
+
+function updateDashboard(project) {
+  if (!project) return;
+
+  const columns = project.columns || {};
+  const cards = Object.values(columns).flat();
+  const totalCards = cards.length;
+  const completedCards = (columns.done || []).length;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const overdueCards = cards.filter((card) => {
+    if (!card.date) return false;
+    const deadline = new Date(`${card.date}T00:00:00`);
+    return deadline < today && !((columns.done || []).some((doneCard) => doneCard.id === card.id));
+  }).length;
+
+  const checklistItems = cards.flatMap((card) => Array.isArray(card.checklist) ? card.checklist : []);
+  const checklistDone = checklistItems.filter((item) => item.done).length;
+  const checklistPercent = checklistItems.length ? Math.round((checklistDone / checklistItems.length) * 100) : 0;
+
+  dashTotalCards.textContent = String(totalCards);
+  dashCompletedCards.textContent = String(completedCards);
+  dashOverdueCards.textContent = String(overdueCards);
+  dashChecklistDone.textContent = `${checklistPercent}%`;
+}
+
+
+function toggleSidebar() {
+  const collapsed = appShell.classList.toggle("sidebar-collapsed");
+  localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+  updateSidebarToggleButton(collapsed);
+}
+
+function applySavedSidebar() {
+  const collapsed = localStorage.getItem(SIDEBAR_KEY) === "1";
+  appShell.classList.toggle("sidebar-collapsed", collapsed);
+  updateSidebarToggleButton(collapsed);
+}
+
+function updateSidebarToggleButton(collapsed) {
+  sidebarToggleBtn.textContent = collapsed ? "☷" : "☰";
+  sidebarToggleBtn.setAttribute("aria-label", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
+  sidebarToggleBtn.setAttribute("title", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
 }
 
 function columnLabel(columnId) {
