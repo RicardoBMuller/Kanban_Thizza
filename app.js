@@ -28,6 +28,7 @@ let currentTargetColumn = "todo";
 let projectModalMode = "create";
 let tempChecklist = [];
 let tempComments = [];
+const modalCloseTimers = new WeakMap();
 
 // DOM
 const projectList = document.getElementById("projectList");
@@ -127,11 +128,11 @@ function runIntroSplash() {
 
   setTimeout(() => {
     splash.classList.add("is-hidden");
-  }, 1800);
+  }, 1900);
 
   setTimeout(() => {
     splash.remove();
-  }, 2600);
+  }, 2700);
 }
 
 function bindEvents() {
@@ -940,13 +941,36 @@ function getDragAfterElement(container, mouseY) {
 }
 
 function openModal(overlay) {
-  overlay.classList.remove("hidden");
+  if (!overlay) return;
+
+  const activeTimer = modalCloseTimers.get(overlay);
+  if (activeTimer) {
+    clearTimeout(activeTimer);
+    modalCloseTimers.delete(overlay);
+  }
+
+  overlay.classList.remove("hidden", "is-closing");
   overlay.setAttribute("aria-hidden", "false");
+
+  requestAnimationFrame(() => {
+    overlay.classList.add("is-active");
+  });
 }
 
 function closeModal(overlay) {
-  overlay.classList.add("hidden");
+  if (!overlay || overlay.classList.contains("hidden")) return;
+
+  overlay.classList.remove("is-active");
+  overlay.classList.add("is-closing");
   overlay.setAttribute("aria-hidden", "true");
+
+  const timer = setTimeout(() => {
+    overlay.classList.remove("is-closing");
+    overlay.classList.add("hidden");
+    modalCloseTimers.delete(overlay);
+  }, 280);
+
+  modalCloseTimers.set(overlay, timer);
 }
 
 function setTheme(theme) {
