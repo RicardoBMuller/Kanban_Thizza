@@ -38,6 +38,45 @@
         <input id="searchInput" class="input" type="text" placeholder="Buscar cards, labels, comentários..." />
       </section>
 
+      <section class="panel dashboard-panel">
+        <div class="panel-header">
+          <span>Dashboard</span>
+        </div>
+        <div class="dashboard-stack">
+          <article class="dashboard-stat dashboard-stat-primary">
+            <div class="dashboard-stat-icon">🗂️</div>
+            <div class="dashboard-stat-copy">
+              <span>Cards totais</span>
+              <strong id="dashTotalCards">0</strong>
+            </div>
+          </article>
+
+          <article class="dashboard-stat dashboard-stat-success">
+            <div class="dashboard-stat-icon">✅</div>
+            <div class="dashboard-stat-copy">
+              <span>Concluídos</span>
+              <strong id="dashCompletedCards">0</strong>
+            </div>
+          </article>
+
+          <article class="dashboard-stat dashboard-stat-warning">
+            <div class="dashboard-stat-icon">⏳</div>
+            <div class="dashboard-stat-copy">
+              <span>Atrasados</span>
+              <strong id="dashOverdueCards">0</strong>
+            </div>
+          </article>
+
+          <article class="dashboard-stat dashboard-stat-accent">
+            <div class="dashboard-stat-icon">📋</div>
+            <div class="dashboard-stat-copy">
+              <span>Checklist concluído</span>
+              <strong id="dashChecklistDone">0%</strong>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-header">
           <span>Tema</span>
@@ -50,6 +89,8 @@
     </aside>
 
     <main class="main-area">
+      <button id="sidebarToggleBtn" class="sidebar-toggle" type="button" aria-label="Esconder menu lateral" title="Esconder menu lateral">☰</button>
+
       <header class="topbar">
         <div>
           <h2 id="boardTitle">Projeto Inicial</h2>
@@ -229,6 +270,10 @@
           <div class="section-inline-header">
             <h4>Comentários</h4>
             <span id="viewCommentsCounter" class="counter-badge">0</span>
+          </div>
+          <div class="inline-add inline-add-view">
+            <input id="viewNewCommentInput" class="input" type="text" placeholder="Adicionar comentário" />
+            <button id="viewAddCommentBtn" class="btn btn-soft" type="button">Adicionar</button>
           </div>
           <div id="viewCommentsList" class="view-comments"></div>
         </div>
