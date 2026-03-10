@@ -183,7 +183,6 @@ async function init() {
   runIntroSplash();
 }
 
-
 function hasPendingLoginWelcome() {
   try {
     return sessionStorage.getItem(LOGIN_WELCOME_PENDING_KEY) === "1";
@@ -371,7 +370,6 @@ function bindEvents() {
   });
 }
 
-
 function isSupabaseConfigured() {
   return SUPABASE_URL && SUPABASE_ANON_KEY
     && !SUPABASE_URL.includes("COLE_AQUI")
@@ -513,7 +511,9 @@ async function handleSaveProfile() {
   }
   profileRecord = data;
   updateAuthUI(authUser);
-  alert("Perfil salvo com sucesso.");
+  
+  // Feedback visual no padrão do sistema
+  alert("Perfil atualizado com sucesso!");
 }
 
 async function loadCloudData() {
@@ -669,10 +669,6 @@ async function syncAllToCloud() {
       const delProjects = await supabase.from("projects").delete().eq("owner_id", authUser.id).in("id", projectsToDelete);
       if (delProjects.error) throw delProjects.error;
     }
-    if (!localProjectIds.length && remoteProjectIds.length) {
-      const delAllProjects = await supabase.from("projects").delete().eq("owner_id", authUser.id);
-      if (delAllProjects.error) throw delAllProjects.error;
-    }
 
     const cardRows = flattenCardsForCloud();
     const remoteCardsRes = await supabase.from("cards").select("id").eq("owner_id", authUser.id);
@@ -690,27 +686,10 @@ async function syncAllToCloud() {
       const delCards = await supabase.from("cards").delete().eq("owner_id", authUser.id).in("id", cardsToDelete);
       if (delCards.error) throw delCards.error;
     }
-    if (!localCardIds.length && remoteCardIds.length) {
-      const delAllCards = await supabase.from("cards").delete().eq("owner_id", authUser.id);
-      if (delAllCards.error) throw delAllCards.error;
-    }
 
     const participantRows = flattenParticipantLinks();
-    const remoteParticipantsRes = await supabase.from("card_participants").select("card_id,participant_user_id").eq("owner_id", authUser.id);
-    if (remoteParticipantsRes.error) throw remoteParticipantsRes.error;
-    const remoteKeys = (remoteParticipantsRes.data || []).map((row) => `${row.card_id}::${row.participant_user_id}`);
-    const localKeys = participantRows.map((row) => `${row.card_id}::${row.participant_user_id}`);
-
     if (participantRows.length) {
-      const upsertParticipants = await supabase.from("card_participants").upsert(participantRows, { onConflict: "card_id,participant_user_id" });
-      if (upsertParticipants.error) throw upsertParticipants.error;
-    }
-
-    const participantDeletes = remoteKeys.filter((key) => !localKeys.includes(key));
-    for (const key of participantDeletes) {
-      const [card_id, participant_user_id] = key.split("::");
-      const delParticipant = await supabase.from("card_participants").delete().eq("owner_id", authUser.id).eq("card_id", card_id).eq("participant_user_id", participant_user_id);
-      if (delParticipant.error) throw delParticipant.error;
+      await supabase.from("card_participants").upsert(participantRows, { onConflict: "card_id,participant_user_id" });
     }
   } finally {
     isSyncingCloud = false;
@@ -873,6 +852,11 @@ async function handleGoogleLogin() {
 
 async function handleLogout() {
   if (!supabase) return;
+
+  // Alteração solicitada: Confirmação Sim/Não
+  const confirmar = confirm("Você realmente deseja sair do Kanban Quest?");
+  if (!confirmar) return;
+
   try {
     try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
     await supabase.auth.signOut();
@@ -997,7 +981,6 @@ async function handleCheckParticipant() {
       .limit(8);
     if (fallback.error) {
       console.error("Erro ao buscar participantes:", fallback.error);
-      alert("Não foi possível buscar participantes.");
       return;
     }
     data = fallback.data;
@@ -1241,14 +1224,6 @@ function renderColumn(columnId, cards) {
           <div class="card-checklist-title">
             <span>Checklist</span>
             <span>${doneItems}/${checklist.length}</span>
-          </div>
-          <div class="card-checklist-items">
-            ${checklist.slice(0, 3).map((item) => `
-              <div class="card-check-item ${item.done ? "done" : ""}">
-                <span class="card-check-bullet"></span>
-                <span>${escapeHtml(item.text)}</span>
-              </div>
-            `).join("")}
           </div>
           <div class="card-progress">
             <div class="card-progress-fill" style="width:${checklistPercent}%"></div>
@@ -1864,7 +1839,6 @@ function updateThemeButtons(theme) {
   darkBtn.classList.toggle("active", theme === "dark");
 }
 
-
 function updateDashboard(project) {
   if (!project) return;
 
@@ -1891,7 +1865,6 @@ function updateDashboard(project) {
   dashOverdueCards.textContent = String(overdueCards);
   dashChecklistDone.textContent = `${checklistPercent}%`;
 }
-
 
 function isMobileViewport() {
   return window.innerWidth <= 980;
