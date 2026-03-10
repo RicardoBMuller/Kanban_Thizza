@@ -183,6 +183,7 @@ async function init() {
   runIntroSplash();
 }
 
+
 function hasPendingLoginWelcome() {
   try {
     return sessionStorage.getItem(LOGIN_WELCOME_PENDING_KEY) === "1";
@@ -370,6 +371,7 @@ function bindEvents() {
   });
 }
 
+
 function isSupabaseConfigured() {
   return SUPABASE_URL && SUPABASE_ANON_KEY
     && !SUPABASE_URL.includes("COLE_AQUI")
@@ -512,8 +514,8 @@ async function handleSaveProfile() {
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual no padrão do sistema
-  alert("Perfil atualizado com sucesso!");
+  // Feedback visual com modal padrão do sistema
+  showSystemModal("Sucesso", "As informações do seu perfil foram salvas com sucesso!");
 }
 
 async function loadCloudData() {
@@ -669,6 +671,10 @@ async function syncAllToCloud() {
       const delProjects = await supabase.from("projects").delete().eq("owner_id", authUser.id).in("id", projectsToDelete);
       if (delProjects.error) throw delProjects.error;
     }
+    if (!localProjectIds.length && remoteProjectIds.length) {
+      const delAllProjects = await supabase.from("projects").delete().eq("owner_id", authUser.id);
+      if (delAllProjects.error) throw delAllProjects.error;
+    }
 
     const cardRows = flattenCardsForCloud();
     const remoteCardsRes = await supabase.from("cards").select("id").eq("owner_id", authUser.id);
@@ -686,10 +692,27 @@ async function syncAllToCloud() {
       const delCards = await supabase.from("cards").delete().eq("owner_id", authUser.id).in("id", cardsToDelete);
       if (delCards.error) throw delCards.error;
     }
+    if (!localCardIds.length && remoteCardIds.length) {
+      const delAllCards = await supabase.from("cards").delete().eq("owner_id", authUser.id);
+      if (delAllCards.error) throw delAllCards.error;
+    }
 
     const participantRows = flattenParticipantLinks();
+    const remoteParticipantsRes = await supabase.from("card_participants").select("card_id,participant_user_id").eq("owner_id", authUser.id);
+    if (remoteParticipantsRes.error) throw remoteParticipantsRes.error;
+    const remoteKeys = (remoteParticipantsRes.data || []).map((row) => `${row.card_id}::${row.participant_user_id}`);
+    const localKeys = participantRows.map((row) => `${row.card_id}::${row.participant_user_id}`);
+
     if (participantRows.length) {
-      await supabase.from("card_participants").upsert(participantRows, { onConflict: "card_id,participant_user_id" });
+      const upsertParticipants = await supabase.from("card_participants").upsert(participantRows, { onConflict: "card_id,participant_user_id" });
+      if (upsertParticipants.error) throw upsertParticipants.error;
+    }
+
+    const participantDeletes = remoteKeys.filter((key) => !localKeys.includes(key));
+    for (const key of participantDeletes) {
+      const [card_id, participant_user_id] = key.split("::");
+      const delParticipant = await supabase.from("card_participants").delete().eq("owner_id", authUser.id).eq("card_id", card_id).eq("participant_user_id", participant_user_id);
+      if (delParticipant.error) throw delParticipant.error;
     }
   } finally {
     isSyncingCloud = false;
@@ -850,20 +873,70 @@ async function handleGoogleLogin() {
   }
 }
 
+// Lógica de logout com modal de confirmação do sistema
 async function handleLogout() {
   if (!supabase) return;
+  
+  // Exibe modal de confirmação do sistema reaproveitando UI padrão
+  showSystemConfirmModal("Confirmação de Saída", "Você realmente deseja sair do Kanban Quest?", async () => {
+    try {
+      try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
+      await supabase.auth.signOut();
+      closeProfileModal();
+      window.location.reload(); // Recarrega para garantir reset total do estado
+    } catch (error) {
+      console.error("Erro ao sair:", error);
+    }
+  });
+}
 
-  // Alteração solicitada: Confirmação Sim/Não
-  const confirmar = confirm("Você realmente deseja sair do Kanban Quest?");
-  if (!confirmar) return;
+// Nova função para exibir modal de confirmação do sistema
+function showSystemConfirmModal(title, message, onConfirm) {
+  projectModalTitle.textContent = title;
+  const originalBody = projectModalOverlay.querySelector(".modal-body").innerHTML;
+  projectModalOverlay.querySelector(".modal-body").innerHTML = `<p class="view-text">${message}</p>`;
+  
+  const restore = () => {
+    projectModalOverlay.querySelector(".modal-body").innerHTML = originalBody;
+    saveProjectBtn.textContent = "Salvar";
+    cancelProjectBtn.textContent = "Cancelar";
+    saveProjectBtn.removeEventListener("click", confirmAction);
+    cancelProjectBtn.removeEventListener("click", restore);
+  };
 
-  try {
-    try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
-    await supabase.auth.signOut();
-    closeProfileModal();
-  } catch (error) {
-    console.error("Erro ao sair:", error);
-  }
+  const confirmAction = () => {
+    onConfirm();
+    restore();
+    closeProjectModal();
+  };
+
+  saveProjectBtn.textContent = "Sim";
+  cancelProjectBtn.textContent = "Não";
+  
+  saveProjectBtn.addEventListener("click", confirmAction);
+  cancelProjectBtn.addEventListener("click", restore);
+  
+  openModal(projectModalOverlay);
+}
+
+// Nova função para exibir modal informativo (Sucesso)
+function showSystemModal(title, message) {
+  projectModalTitle.textContent = title;
+  const originalBody = projectModalOverlay.querySelector(".modal-body").innerHTML;
+  projectModalOverlay.querySelector(".modal-body").innerHTML = `<p class="view-text">${message}</p>`;
+  saveProjectBtn.classList.add("hidden");
+  cancelProjectBtn.textContent = "OK";
+  
+  const restore = () => {
+    projectModalOverlay.querySelector(".modal-body").innerHTML = originalBody;
+    saveProjectBtn.classList.remove("hidden");
+    cancelProjectBtn.textContent = "Cancelar";
+    cancelProjectBtn.removeEventListener("click", restore);
+    closeProjectModal();
+  };
+  
+  cancelProjectBtn.addEventListener("click", restore);
+  openModal(projectModalOverlay);
 }
 
 function participantDisplayName(participant) {
@@ -981,6 +1054,7 @@ async function handleCheckParticipant() {
       .limit(8);
     if (fallback.error) {
       console.error("Erro ao buscar participantes:", fallback.error);
+      alert("Não foi possível buscar participantes.");
       return;
     }
     data = fallback.data;
@@ -1224,6 +1298,14 @@ function renderColumn(columnId, cards) {
           <div class="card-checklist-title">
             <span>Checklist</span>
             <span>${doneItems}/${checklist.length}</span>
+          </div>
+          <div class="card-checklist-items">
+            ${checklist.slice(0, 3).map((item) => `
+              <div class="card-check-item ${item.done ? "done" : ""}">
+                <span class="card-check-bullet"></span>
+                <span>${escapeHtml(item.text)}</span>
+              </div>
+            `).join("")}
           </div>
           <div class="card-progress">
             <div class="card-progress-fill" style="width:${checklistPercent}%"></div>
@@ -1839,6 +1921,7 @@ function updateThemeButtons(theme) {
   darkBtn.classList.toggle("active", theme === "dark");
 }
 
+
 function updateDashboard(project) {
   if (!project) return;
 
@@ -1865,6 +1948,7 @@ function updateDashboard(project) {
   dashOverdueCards.textContent = String(overdueCards);
   dashChecklistDone.textContent = `${checklistPercent}%`;
 }
+
 
 function isMobileViewport() {
   return window.innerWidth <= 980;
