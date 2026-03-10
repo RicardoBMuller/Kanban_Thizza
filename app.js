@@ -5,6 +5,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const STORAGE_KEY = "kanban_fcc_pro_v5";
 const THEME_KEY = "kanban_fcc_theme";
 const SIDEBAR_KEY = "kanban_fcc_sidebar_collapsed";
+const LOGIN_WELCOME_PENDING_KEY = "kanban_login_welcome_pending";
 
 const defaultColumns = () => ({
   todo: [],
@@ -36,7 +37,6 @@ const searchInput = document.getElementById("searchInput");
 const boardTitle = document.getElementById("boardTitle");
 const sidebarToggleBtn = document.getElementById("sidebarToggleBtn");
 const appShell = document.querySelector(".app-shell");
-const sidebarEl = document.querySelector(".sidebar");
 const mainArea = document.querySelector(".main-area");
 const dashTotalCards = document.getElementById("dashTotalCards");
 const dashCompletedCards = document.getElementById("dashCompletedCards");
@@ -61,7 +61,6 @@ const logoutBtn = document.getElementById("logoutBtn");
 const brandUserName = document.getElementById("brandUserName");
 const brandAvatar = document.getElementById("brandAvatar");
 const brandMark = document.getElementById("brandMark");
-const mobileSidebarCloseBtn = document.getElementById("mobileSidebarCloseBtn");
 const authModalOverlay = document.getElementById("authModalOverlay");
 const closeAuthModalBtn = document.getElementById("closeAuthModalBtn");
 const googleLoginBtn = document.getElementById("googleLoginBtn");
@@ -225,10 +224,16 @@ function bindEvents() {
 
   on(lightBtn, "click", () => setTheme("light"));
   on(darkBtn, "click", () => setTheme("dark"));
-  on(sidebarToggleBtn, "click", () => { toggleSidebar(); updateSidebarToggleButton(appShell.classList.contains("sidebar-collapsed")); });
-  on(mobileSidebarCloseBtn, "click", () => { closeMobileSidebar(); updateSidebarToggleButton(false); });
-  on(mainArea, "click", () => { if (isMobileLayout() && appShell.classList.contains("sidebar-open")) { closeMobileSidebar(); updateSidebarToggleButton(false); } });
-  on(window, "resize", () => { applySavedSidebar(); });
+  on(sidebarToggleBtn, "click", (e) => { e.stopPropagation(); toggleSidebar(); });
+  window.addEventListener("resize", handleResponsiveLayout);
+  on(mainArea, "click", () => { if (isMobileViewport() && appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar(); });
+  on(document, "click", (e) => {
+    if (!isMobileViewport() || !appShell.classList.contains("mobile-sidebar-open")) return;
+    if (sidebarToggleBtn.contains(e.target)) return;
+    const sidebarEl = document.querySelector('.sidebar');
+    if (sidebarEl && sidebarEl.contains(e.target)) return;
+    closeMobileSidebar();
+  });
 
   on(loginOpenBtn, "click", openAuthModal);
   on(profileBtn, "click", openProfileModal);
@@ -362,13 +367,16 @@ async function initAuth() {
     if (error) throw error;
 
     await refreshAuthUser(data.session?.user || null);
+    maybeShowLoginWelcome(data.session?.user || null);
 
     supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         await refreshAuthUser(session.user);
         closeAuthModal();
+        maybeShowLoginWelcome(session.user);
       } else {
         authUser = null;
+        try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
         updateAuthUI(null);
       }
     });
@@ -409,6 +417,62 @@ async function refreshAuthUser(baseUser = null) {
   authUser = nextUser;
   updateAuthUI(authUser);
   return authUser;
+}
+
+function maybeShowLoginWelcome(user) {
+  if (!user) return;
+  let shouldShow = false;
+  try {
+    shouldShow = sessionStorage.getItem(LOGIN_WELCOME_PENDING_KEY) === "1";
+    if (shouldShow) sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY);
+  } catch (_) {
+    shouldShow = false;
+  }
+  if (!shouldShow) return;
+
+  const { fullName, avatarUrl } = getUserPresentation(user);
+  showWelcomeSplash(fullName, avatarUrl);
+}
+
+function showWelcomeSplash(fullName, avatarUrl) {
+  const existing = document.getElementById("welcomeSplash");
+  if (existing) existing.remove();
+
+  const splash = document.createElement("div");
+  splash.id = "welcomeSplash";
+  splash.className = "intro-splash intro-splash-welcome";
+  splash.setAttribute("aria-hidden", "true");
+
+  const initials = getInitials(fullName);
+  const safeName = escapeHtml(fullName);
+  const safeAvatar = escapeHtml(avatarUrl);
+  const mark = avatarUrl
+    ? `<img class="intro-splash-mark intro-splash-avatar" src="${safeAvatar}" alt="Avatar de ${safeName}">`
+    : `<div class="intro-splash-mark intro-splash-avatar-fallback">${escapeHtml(initials)}</div>`;
+
+  splash.innerHTML = `
+    <div class="intro-splash-glow"></div>
+    <div class="intro-splash-card">
+      ${mark}
+      <div class="intro-splash-copy">
+        <strong>Olá ${safeName}, seja bem-vindo ao seu Kanban!</strong>
+        <span>Seu espaço já está pronto para começar.</span>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(splash);
+  setTimeout(() => splash.classList.add("is-hidden"), 1900);
+  setTimeout(() => splash.remove(), 2800);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function updateAuthUI(user) {
@@ -503,6 +567,7 @@ async function handleGoogleLogin() {
   }
 
   try {
+    try { sessionStorage.setItem(LOGIN_WELCOME_PENDING_KEY, "1"); } catch (_) {}
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -519,6 +584,7 @@ async function handleLogout() {
   if (!supabase) return;
 
   try {
+    try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
     await supabase.auth.signOut();
     closeProfileModal();
   } catch (error) {
@@ -1407,46 +1473,61 @@ function updateDashboard(project) {
 }
 
 
-function isMobileLayout() {
-  return window.innerWidth <= 900;
+function isMobileViewport() {
+  return window.innerWidth <= 980;
+}
+
+function openMobileSidebar() {
+  appShell.classList.add("mobile-sidebar-open");
+  appShell.classList.remove("sidebar-collapsed");
+  updateSidebarToggleButton(false);
 }
 
 function closeMobileSidebar() {
-  appShell.classList.remove("sidebar-open");
+  appShell.classList.remove("mobile-sidebar-open");
+  updateSidebarToggleButton(true);
 }
 
 function toggleSidebar() {
-  if (isMobileLayout()) {
-    appShell.classList.toggle("sidebar-open");
+  if (isMobileViewport()) {
+    if (appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar();
+    else openMobileSidebar();
     return;
   }
+
   const collapsed = appShell.classList.toggle("sidebar-collapsed");
   safeSetItem(SIDEBAR_KEY, collapsed ? "1" : "0");
   updateSidebarToggleButton(collapsed);
 }
 
 function applySavedSidebar() {
-  if (isMobileLayout()) {
+  if (isMobileViewport()) {
     appShell.classList.remove("sidebar-collapsed");
-    appShell.classList.remove("sidebar-open");
-    updateSidebarToggleButton(false);
+    appShell.classList.remove("mobile-sidebar-open");
+    updateSidebarToggleButton(true);
     return;
   }
+
   const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
+  appShell.classList.remove("mobile-sidebar-open");
   appShell.classList.toggle("sidebar-collapsed", collapsed);
-  appShell.classList.remove("sidebar-open");
   updateSidebarToggleButton(collapsed);
 }
 
-function updateSidebarToggleButton(collapsed) {
-  if (isMobileLayout()) {
-    const opened = appShell.classList.contains("sidebar-open");
-    sidebarToggleBtn.textContent = opened ? "✕" : "☰";
-    sidebarToggleBtn.setAttribute("aria-label", opened ? "Fechar menu lateral" : "Abrir menu lateral");
-    sidebarToggleBtn.setAttribute("title", opened ? "Fechar menu lateral" : "Abrir menu lateral");
-    return;
+function handleResponsiveLayout() {
+  if (isMobileViewport()) {
+    appShell.classList.remove("sidebar-collapsed");
+    if (!appShell.classList.contains("mobile-sidebar-open")) updateSidebarToggleButton(true);
+  } else {
+    appShell.classList.remove("mobile-sidebar-open");
+    const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
+    appShell.classList.toggle("sidebar-collapsed", collapsed);
+    updateSidebarToggleButton(collapsed);
   }
-  sidebarToggleBtn.textContent = collapsed ? "☷" : "☰";
+}
+
+function updateSidebarToggleButton(collapsed) {
+  sidebarToggleBtn.textContent = collapsed ? "☰" : "✕";
   sidebarToggleBtn.setAttribute("aria-label", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
   sidebarToggleBtn.setAttribute("title", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
 }
