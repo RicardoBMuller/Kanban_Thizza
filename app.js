@@ -455,7 +455,7 @@ function showWelcomeSplash(fullName, avatarUrl) {
     <div class="intro-splash-card">
       ${mark}
       <div class="intro-splash-copy">
-        <strong>Olá ${safeName}, seja bem-vindo ao seu Kanban!</strong>
+        <strong>Olá ${safeName}, seja bem-vindo à sua área de trabalho!</strong>
         <span>Seu espaço já está pronto para começar.</span>
       </div>
     </div>
@@ -463,7 +463,7 @@ function showWelcomeSplash(fullName, avatarUrl) {
 
   document.body.appendChild(splash);
   setTimeout(() => splash.classList.add("is-hidden"), 1900);
-  setTimeout(() => splash.remove(), 2800);
+  setTimeout(() => splash.remove(), 3800);
 }
 
 function escapeHtml(value) {
