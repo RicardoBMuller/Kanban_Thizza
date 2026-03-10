@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
-const SUPABASE_URL = "COLE_AQUI_SUA_SUPABASE_URL";
-const SUPABASE_ANON_KEY = "COLE_AQUI_SUA_SUPABASE_ANON_KEY";
+const SUPABASE_URL = "https://ymskzxssjnvhsqhymzbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inltc2t6eHNzam52aHNxaHltemJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwOTAyMzYsImV4cCI6MjA4ODY2NjIzNn0.nsXZ62padaByJNZqJogVyUxW8hqD0oxzl70p2D4sfOs";
 
 const STORAGE_KEY = "kanban_fcc_pro_v5";
 const THEME_KEY = "kanban_fcc_theme";
