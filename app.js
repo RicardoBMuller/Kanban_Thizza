@@ -15,15 +15,8 @@ const defaultColumns = () => ({
 let state = loadState();
 let currentProjectId = state.currentProjectId || null;
 
-if (!state.projects.length) {
-  const initialProject = createProject("Projeto Inicial");
-  state.projects.push(initialProject);
-  currentProjectId = initialProject.id;
-  saveState();
-}
-
-if (!currentProjectId || !state.projects.find((p) => p.id === currentProjectId)) {
-  currentProjectId = state.projects[0].id;
+if (currentProjectId && !state.projects.find((p) => p.id === currentProjectId)) {
+  currentProjectId = state.projects[0]?.id || null;
   saveState();
 }
 
@@ -63,6 +56,9 @@ const darkBtn = document.getElementById("darkBtn");
 const loginOpenBtn = document.getElementById("loginOpenBtn");
 const profileBtn = document.getElementById("profileBtn");
 const logoutBtn = document.getElementById("logoutBtn");
+const brandUserName = document.getElementById("brandUserName");
+const brandAvatar = document.getElementById("brandAvatar");
+const brandMark = document.getElementById("brandMark");
 const authModalOverlay = document.getElementById("authModalOverlay");
 const closeAuthModalBtn = document.getElementById("closeAuthModalBtn");
 const googleLoginBtn = document.getElementById("googleLoginBtn");
@@ -136,6 +132,27 @@ const addCardButtons = document.querySelectorAll(".add-card-btn");
 const columnEls = document.querySelectorAll(".column");
 
 init();
+
+function requireAuth(actionLabel = "continuar") {
+  if (authUser) return true;
+  alert(`Faça login com Google para ${actionLabel}.`);
+  openAuthModal();
+  return false;
+}
+
+function updateCreationAccess() {
+  const canCreateProjects = Boolean(authUser);
+  const hasProject = Boolean(getCurrentProject());
+
+  newProjectBtn.disabled = !canCreateProjects;
+  newProjectBtn.title = canCreateProjects ? "Criar projeto" : "Faça login com Google para criar projetos";
+
+  addCardButtons.forEach((button) => {
+    const canCreateCards = Boolean(authUser && hasProject);
+    button.disabled = !canCreateCards;
+    button.title = canCreateCards ? "Criar card" : "Faça login com Google e selecione/crie um projeto";
+  });
+}
 
 async function init() {
   migrateOldData();
@@ -363,30 +380,47 @@ function updateAuthUI(user) {
     const metadata = user.user_metadata || {};
     const fullName = metadata.full_name || metadata.name || user.email?.split("@")[0] || "Usuário";
     const email = user.email || "";
-    const avatarUrl = metadata.avatar_url || "";
+    const avatarUrl = metadata.avatar_url || metadata.picture || "";
     const initials = getInitials(fullName);
 
     profileName.textContent = fullName;
     profileEmail.textContent = email;
     profileAvatarFallback.textContent = initials;
+    brandUserName.textContent = fullName;
+    brandMark.textContent = initials;
 
     if (avatarUrl) {
       profileAvatar.src = avatarUrl;
       profileAvatar.classList.remove("hidden");
       profileAvatarFallback.classList.add("hidden");
+      brandAvatar.src = avatarUrl;
+      brandAvatar.classList.remove("hidden");
+      brandMark.classList.add("hidden");
     } else {
       profileAvatar.removeAttribute("src");
       profileAvatar.classList.add("hidden");
       profileAvatarFallback.classList.remove("hidden");
+      brandAvatar.removeAttribute("src");
+      brandAvatar.classList.add("hidden");
+      brandMark.classList.remove("hidden");
     }
   } else {
     profileName.textContent = "Visitante";
     profileEmail.textContent = "Faça login para conectar sua conta.";
-    profileAvatarFallback.textContent = "TM";
+    profileAvatarFallback.textContent = "KQ";
     profileAvatar.removeAttribute("src");
     profileAvatar.classList.add("hidden");
     profileAvatarFallback.classList.remove("hidden");
+    brandUserName.textContent = "Kanban Quest";
+    brandMark.textContent = "KQ";
+    brandAvatar.removeAttribute("src");
+    brandAvatar.classList.add("hidden");
+    brandMark.classList.remove("hidden");
   }
+
+  updateCreationAccess();
+  renderProjects();
+  renderBoard();
 }
 
 function getInitials(name) {
@@ -517,6 +551,22 @@ function migrateOldData() {
 function renderProjects() {
   projectList.innerHTML = "";
 
+  if (!authUser) {
+    const empty = document.createElement("li");
+    empty.className = "project-empty-state";
+    empty.textContent = "Faça login para ver e criar projetos.";
+    projectList.appendChild(empty);
+    return;
+  }
+
+  if (!state.projects.length) {
+    const empty = document.createElement("li");
+    empty.className = "project-empty-state";
+    empty.textContent = authUser ? "Nenhum projeto criado ainda." : "Faça login para criar projetos.";
+    projectList.appendChild(empty);
+    return;
+  }
+
   state.projects.forEach((project) => {
     const li = document.createElement("li");
     li.innerHTML = `
@@ -570,8 +620,24 @@ function closeProjectActionsMenu() {
 }
 
 function renderBoard() {
-  const project = getCurrentProject();
-  if (!project) return;
+  const project = authUser ? getCurrentProject() : null;
+
+  if (!project) {
+    boardTitle.textContent = authUser ? "Nenhum projeto" : "Faça login para começar";
+    projectCount.textContent = authUser ? "0 projeto(s) no total" : "Entre com Google para criar seu primeiro projeto";
+
+    renderColumn("todo", []);
+    renderColumn("doing", []);
+    renderColumn("done", []);
+
+    countTodo.textContent = 0;
+    countDoing.textContent = 0;
+    countDone.textContent = 0;
+
+    updateDashboard({ columns: defaultColumns() });
+    updateCreationAccess();
+    return;
+  }
 
   boardTitle.textContent = project.name;
   projectCount.textContent = `${state.projects.length} projeto(s) no total`;
@@ -585,6 +651,7 @@ function renderBoard() {
   countDone.textContent = project.columns.done.length;
 
   updateDashboard(project);
+  updateCreationAccess();
 }
 
 function renderColumn(columnId, cards) {
@@ -701,6 +768,7 @@ function renderColumn(columnId, cards) {
 }
 
 function openProjectModal(mode) {
+  if (!requireAuth(mode === "create" ? "criar projetos" : "editar projetos")) return;
   projectModalMode = mode;
 
   if (mode === "create") {
@@ -726,6 +794,7 @@ function closeProjectModal() {
 }
 
 function handleSaveProject() {
+  if (!requireAuth("salvar projetos")) return;
   const name = projectNameInput.value.trim();
   if (!name) {
     alert("Digite um nome para o projeto.");
@@ -771,6 +840,7 @@ function handleSaveProject() {
 }
 
 function handleDeleteProject() {
+  if (!requireAuth("excluir projetos")) return;
   if (state.projects.length <= 1) {
     alert("Você precisa manter pelo menos 1 projeto.");
     return;
@@ -790,6 +860,11 @@ function handleDeleteProject() {
 }
 
 function openCardModal(mode, columnId, cardId = null) {
+  if (!requireAuth(mode === "create" ? "criar cards" : "editar cards")) return;
+  if (!getCurrentProject()) {
+    alert("Crie um projeto antes de adicionar cards.");
+    return;
+  }
   currentTargetColumn = columnId;
   currentEditingCardId = null;
   tempChecklist = [];
@@ -837,6 +912,7 @@ function closeCardModal() {
 }
 
 function handleSaveCard() {
+  if (!requireAuth("salvar cards")) return;
   const title = cardTitleInput.value.trim();
   if (!title) {
     alert("Digite um título para o card.");
@@ -880,6 +956,7 @@ function handleSaveCard() {
 }
 
 function handleDeleteCard() {
+  if (!requireAuth("excluir cards")) return;
   if (!currentEditingCardId) return;
 
   const ok = confirm("Deseja excluir este card?");
