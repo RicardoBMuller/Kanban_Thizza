@@ -463,7 +463,7 @@ function showWelcomeSplash(fullName, avatarUrl) {
 
   document.body.appendChild(splash);
   setTimeout(() => splash.classList.add("is-hidden"), 1900);
-  setTimeout(() => splash.remove(), 3800);
+  setTimeout(() => splash.remove(), 2800);
 }
 
 function escapeHtml(value) {
