@@ -1,3 +1,7 @@
+document.addEventListener("DOMContentLoaded", () => {
+const SUPABASE_URL = "COLE_AQUI_SUA_SUPABASE_URL";
+const SUPABASE_ANON_KEY = "COLE_AQUI_SUA_SUPABASE_ANON_KEY";
+
 const STORAGE_KEY = "kanban_fcc_pro_v5";
 const THEME_KEY = "kanban_fcc_theme";
 const SIDEBAR_KEY = "kanban_fcc_sidebar_collapsed";
@@ -30,6 +34,9 @@ let tempChecklist = [];
 let tempComments = [];
 const modalCloseTimers = new WeakMap();
 
+let supabase = null;
+let authUser = null;
+
 // DOM
 const projectList = document.getElementById("projectList");
 const searchInput = document.getElementById("searchInput");
@@ -52,6 +59,29 @@ const deleteProjectBtn = document.getElementById("deleteProjectBtn");
 
 const lightBtn = document.getElementById("lightBtn");
 const darkBtn = document.getElementById("darkBtn");
+
+const loginOpenBtn = document.getElementById("loginOpenBtn");
+const profileBtn = document.getElementById("profileBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+const authModalOverlay = document.getElementById("authModalOverlay");
+const closeAuthModalBtn = document.getElementById("closeAuthModalBtn");
+const googleLoginBtn = document.getElementById("googleLoginBtn");
+const authConfigHint = document.getElementById("authConfigHint");
+const profileModalOverlay = document.getElementById("profileModalOverlay");
+const closeProfileModalBtn = document.getElementById("closeProfileModalBtn");
+const closeProfileFooterBtn = document.getElementById("closeProfileFooterBtn");
+const profileName = document.getElementById("profileName");
+const profileEmail = document.getElementById("profileEmail");
+const profileAvatar = document.getElementById("profileAvatar");
+const profileAvatarFallback = document.getElementById("profileAvatarFallback");
+const projectActionsMenu = document.getElementById("projectActionsMenu");
+const projectActionRenameBtn = document.getElementById("projectActionRenameBtn");
+const projectActionDeleteBtn = document.getElementById("projectActionDeleteBtn");
+let projectActionsOpen = false;
+
+function on(el, eventName, handler) {
+  if (el) el.addEventListener(eventName, handler);
+}
 
 // Modal projeto
 const projectModalOverlay = document.getElementById("projectModalOverlay");
@@ -107,13 +137,14 @@ const columnEls = document.querySelectorAll(".column");
 
 init();
 
-function init() {
+async function init() {
   migrateOldData();
   applySavedTheme();
   applySavedSidebar();
   renderProjects();
   renderBoard();
   bindEvents();
+  await initAuth();
   runIntroSplash();
 }
 
@@ -132,48 +163,56 @@ function runIntroSplash() {
 
   setTimeout(() => {
     splash.remove();
-  }, 2700);
+  }, 3000);
 }
 
 function bindEvents() {
-  newProjectBtn.addEventListener("click", () => openProjectModal("create"));
-  renameProjectBtn.addEventListener("click", () => openProjectModal("rename"));
-  deleteProjectBtn.addEventListener("click", handleDeleteProject);
+  on(newProjectBtn, "click", () => openProjectModal("create"));
 
-  closeProjectModalBtn.addEventListener("click", closeProjectModal);
-  cancelProjectBtn.addEventListener("click", closeProjectModal);
-  saveProjectBtn.addEventListener("click", handleSaveProject);
+  on(closeProjectModalBtn, "click", closeProjectModal);
+  on(cancelProjectBtn, "click", closeProjectModal);
+  on(saveProjectBtn, "click", handleSaveProject);
 
-  closeCardModalBtn.addEventListener("click", closeCardModal);
-  cancelCardBtn.addEventListener("click", closeCardModal);
-  saveCardBtn.addEventListener("click", handleSaveCard);
-  deleteCardBtn.addEventListener("click", handleDeleteCard);
+  on(closeCardModalBtn, "click", closeCardModal);
+  on(cancelCardBtn, "click", closeCardModal);
+  on(saveCardBtn, "click", handleSaveCard);
+  on(deleteCardBtn, "click", handleDeleteCard);
 
-  closeViewCardModalBtn.addEventListener("click", closeViewCardModal);
-  closeViewCardFooterBtn.addEventListener("click", closeViewCardModal);
+  on(closeViewCardModalBtn, "click", closeViewCardModal);
+  on(closeViewCardFooterBtn, "click", closeViewCardModal);
 
-  addChecklistItemBtn.addEventListener("click", handleAddChecklistItem);
-  addCommentBtn.addEventListener("click", handleAddComment);
+  on(addChecklistItemBtn, "click", handleAddChecklistItem);
+  on(addCommentBtn, "click", handleAddComment);
 
-  newChecklistItemInput.addEventListener("keydown", (e) => {
+  on(newChecklistItemInput, "keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleAddChecklistItem();
     }
   });
 
-  newCommentInput.addEventListener("keydown", (e) => {
+  on(newCommentInput, "keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleAddComment();
     }
   });
 
-  searchInput.addEventListener("input", renderBoard);
+  on(searchInput, "input", renderBoard);
 
-  lightBtn.addEventListener("click", () => setTheme("light"));
-  darkBtn.addEventListener("click", () => setTheme("dark"));
-  sidebarToggleBtn.addEventListener("click", toggleSidebar);
+  on(lightBtn, "click", () => setTheme("light"));
+  on(darkBtn, "click", () => setTheme("dark"));
+  on(sidebarToggleBtn, "click", toggleSidebar);
+
+  on(loginOpenBtn, "click", openAuthModal);
+  on(profileBtn, "click", openProfileModal);
+  on(logoutBtn, "click", handleLogout);
+  on(projectActionRenameBtn, "click", () => { closeProjectActionsMenu(); openProjectModal("rename"); });
+  on(projectActionDeleteBtn, "click", () => { closeProjectActionsMenu(); handleDeleteProject(); });
+  on(closeAuthModalBtn, "click", closeAuthModal);
+  on(googleLoginBtn, "click", handleGoogleLogin);
+  on(closeProfileModalBtn, "click", closeProfileModal);
+  on(closeProfileFooterBtn, "click", closeProfileModal);
 
   addCardButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -182,19 +221,27 @@ function bindEvents() {
     });
   });
 
-  projectModalOverlay.addEventListener("click", (e) => {
+  on(projectModalOverlay, "click", (e) => {
     if (e.target === projectModalOverlay) closeProjectModal();
   });
 
-  cardModalOverlay.addEventListener("click", (e) => {
+  on(cardModalOverlay, "click", (e) => {
     if (e.target === cardModalOverlay) closeCardModal();
   });
 
-  viewCardModalOverlay.addEventListener("click", (e) => {
+  on(viewCardModalOverlay, "click", (e) => {
     if (e.target === viewCardModalOverlay) closeViewCardModal();
   });
 
-  viewEditCardBtn.addEventListener("click", () => {
+  on(authModalOverlay, "click", (e) => {
+    if (e.target === authModalOverlay) closeAuthModal();
+  });
+
+  on(profileModalOverlay, "click", (e) => {
+    if (e.target === profileModalOverlay) closeProfileModal();
+  });
+
+  on(viewEditCardBtn, "click", () => {
     const cardId = viewEditCardBtn.dataset.cardId;
     if (!cardId) return;
 
@@ -205,12 +252,18 @@ function bindEvents() {
     setTimeout(() => openCardModal("edit", found.columnId, cardId), 140);
   });
 
-  viewAddCommentBtn.addEventListener("click", handleViewAddComment);
-  viewNewCommentInput.addEventListener("keydown", (e) => {
+  on(viewAddCommentBtn, "click", handleViewAddComment);
+  on(viewNewCommentInput, "keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleViewAddComment();
     }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!projectActionsOpen) return;
+    if (e.target.closest("#projectActionsMenu") || e.target.closest(".project-edit-btn")) return;
+    closeProjectActionsMenu();
   });
 
   document.addEventListener("keydown", (e) => {
@@ -218,6 +271,8 @@ function bindEvents() {
       closeProjectModal();
       closeCardModal();
       closeViewCardModal();
+      closeAuthModal();
+      closeProfileModal();
     }
   });
 
@@ -256,9 +311,159 @@ function bindEvents() {
   });
 }
 
+
+function isSupabaseConfigured() {
+  return SUPABASE_URL && SUPABASE_ANON_KEY
+    && !SUPABASE_URL.includes("COLE_AQUI")
+    && !SUPABASE_ANON_KEY.includes("COLE_AQUI");
+}
+
+async function initAuth() {
+  if (!isSupabaseConfigured()) {
+    updateAuthUI(null);
+    return;
+  }
+
+  try {
+    if (!window.supabase || !window.supabase.createClient) {
+      updateAuthUI(null);
+      authConfigHint.classList.remove("hidden");
+      return;
+    }
+
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+
+    authUser = data.session?.user || null;
+    updateAuthUI(authUser);
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+      authUser = session?.user || null;
+      updateAuthUI(authUser);
+      if (authUser) {
+        closeAuthModal();
+      }
+    });
+  } catch (error) {
+    console.error("Erro ao iniciar Supabase Auth:", error);
+    updateAuthUI(null);
+  }
+}
+
+function updateAuthUI(user) {
+  const isLogged = Boolean(user);
+
+  const loginLabel = isLogged ? "Conta conectada" : "Entrar com Google";
+  loginOpenBtn.innerHTML = `<span class="google-mark" aria-hidden="true"><svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path fill="#EA4335" d="M9 7.363v3.49h4.85c-.213 1.122-.853 2.072-1.812 2.711l2.928 2.273C16.674 14.266 17.5 11.916 17.5 9c0-.554-.05-1.087-.143-1.637H9z"/><path fill="#34A853" d="M9 17.5c2.43 0 4.469-.805 5.958-2.184l-2.928-2.273c-.812.544-1.852.866-3.03.866-2.33 0-4.303-1.574-5.008-3.69H.964v2.319A8.998 8.998 0 009 17.5z"/><path fill="#4A90E2" d="M3.992 10.219A5.396 5.396 0 013.712 9c0-.423.1-.83.28-1.219V5.462H.964A8.998 8.998 0 00.5 9c0 1.45.348 2.82.964 4.038l2.528-1.962z"/><path fill="#FBBC05" d="M9 4.091c1.321 0 2.507.455 3.441 1.348l2.58-2.58C13.464 1.412 11.427.5 9 .5A8.998 8.998 0 00.964 5.462L3.992 7.78C4.697 5.665 6.67 4.091 9 4.091z"/></svg></span><span class="btn-google-text">${loginLabel}</span>`;
+  profileBtn.classList.toggle("hidden", !isLogged);
+  logoutBtn.classList.toggle("hidden", !isLogged);
+
+  if (user) {
+    const metadata = user.user_metadata || {};
+    const fullName = metadata.full_name || metadata.name || user.email?.split("@")[0] || "Usuário";
+    const email = user.email || "";
+    const avatarUrl = metadata.avatar_url || "";
+    const initials = getInitials(fullName);
+
+    profileName.textContent = fullName;
+    profileEmail.textContent = email;
+    profileAvatarFallback.textContent = initials;
+
+    if (avatarUrl) {
+      profileAvatar.src = avatarUrl;
+      profileAvatar.classList.remove("hidden");
+      profileAvatarFallback.classList.add("hidden");
+    } else {
+      profileAvatar.removeAttribute("src");
+      profileAvatar.classList.add("hidden");
+      profileAvatarFallback.classList.remove("hidden");
+    }
+  } else {
+    profileName.textContent = "Visitante";
+    profileEmail.textContent = "Faça login para conectar sua conta.";
+    profileAvatarFallback.textContent = "TM";
+    profileAvatar.removeAttribute("src");
+    profileAvatar.classList.add("hidden");
+    profileAvatarFallback.classList.remove("hidden");
+  }
+}
+
+function getInitials(name) {
+  return String(name || "TM")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "TM";
+}
+
+function openAuthModal() {
+  authConfigHint.classList.toggle("hidden", isSupabaseConfigured());
+  googleLoginBtn.disabled = !isSupabaseConfigured();
+  openModal(authModalOverlay);
+}
+
+function closeAuthModal() {
+  closeModal(authModalOverlay);
+}
+
+function openProfileModal() {
+  openModal(profileModalOverlay);
+}
+
+function closeProfileModal() {
+  closeModal(profileModalOverlay);
+}
+
+async function handleGoogleLogin() {
+  if (!supabase) {
+    authConfigHint.classList.remove("hidden");
+    return;
+  }
+
+  try {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.href.split("#")[0]
+      }
+    });
+  } catch (error) {
+    console.error("Erro no login com Google:", error);
+    alert("Não foi possível iniciar o login com Google.");
+  }
+}
+
+async function handleLogout() {
+  if (!supabase) return;
+
+  try {
+    await supabase.auth.signOut();
+    closeProfileModal();
+  } catch (error) {
+    console.error("Erro ao sair:", error);
+  }
+}
+
+
+function safeGetItem(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
 function loadState() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = safeGetItem(STORAGE_KEY);
     if (!saved) {
       return { currentProjectId: null, projects: [] };
     }
@@ -270,7 +475,7 @@ function loadState() {
 
 function saveState() {
   state.currentProjectId = currentProjectId;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  safeSetItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function uid() {
@@ -314,7 +519,10 @@ function renderProjects() {
 
   state.projects.forEach((project) => {
     const li = document.createElement("li");
-    li.textContent = project.name;
+    li.innerHTML = `
+      <span class="project-item-name">${escapeHtml(project.name)}</span>
+      <button class="project-edit-btn" type="button" aria-label="Editar projeto" title="Editar projeto">⋯</button>
+    `;
 
     if (project.id === currentProjectId) {
       li.classList.add("active");
@@ -325,10 +533,40 @@ function renderProjects() {
       saveState();
       renderProjects();
       renderBoard();
+      closeProjectActionsMenu();
+    });
+
+    const editBtn = li.querySelector(".project-edit-btn");
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      currentProjectId = project.id;
+      saveState();
+      renderProjects();
+      renderBoard();
+      toggleProjectActionsMenu(editBtn);
     });
 
     projectList.appendChild(li);
   });
+}
+
+function toggleProjectActionsMenu(anchorEl) {
+  if (projectActionsOpen) {
+    closeProjectActionsMenu();
+  }
+
+  const rect = anchorEl.getBoundingClientRect();
+  projectActionsMenu.style.top = `${rect.bottom + 10}px`;
+  projectActionsMenu.style.left = `${Math.max(16, rect.right - 220)}px`;
+  projectActionsMenu.classList.remove("hidden");
+  projectActionsMenu.setAttribute("aria-hidden", "false");
+  projectActionsOpen = true;
+}
+
+function closeProjectActionsMenu() {
+  projectActionsMenu.classList.add("hidden");
+  projectActionsMenu.setAttribute("aria-hidden", "true");
+  projectActionsOpen = false;
 }
 
 function renderBoard() {
@@ -975,12 +1213,12 @@ function closeModal(overlay) {
 
 function setTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-  localStorage.setItem(THEME_KEY, theme);
+  safeSetItem(THEME_KEY, theme);
   updateThemeButtons(theme);
 }
 
 function applySavedTheme() {
-  const savedTheme = localStorage.getItem(THEME_KEY) || "dark";
+  const savedTheme = safeGetItem(THEME_KEY) || "dark";
   document.documentElement.setAttribute("data-theme", savedTheme);
   updateThemeButtons(savedTheme);
 }
@@ -1021,12 +1259,12 @@ function updateDashboard(project) {
 
 function toggleSidebar() {
   const collapsed = appShell.classList.toggle("sidebar-collapsed");
-  localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+  safeSetItem(SIDEBAR_KEY, collapsed ? "1" : "0");
   updateSidebarToggleButton(collapsed);
 }
 
 function applySavedSidebar() {
-  const collapsed = localStorage.getItem(SIDEBAR_KEY) === "1";
+  const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
   appShell.classList.toggle("sidebar-collapsed", collapsed);
   updateSidebarToggleButton(collapsed);
 }
@@ -1074,3 +1312,4 @@ function escapeHtml(text) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+});

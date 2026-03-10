@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kanban FCC</title>
+  <title>Kanban Quest</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -16,19 +16,19 @@
   <div id="introSplash" class="intro-splash" aria-hidden="true">
     <div class="intro-splash-glow"></div>
     <div class="intro-splash-card">
-      <div class="intro-splash-mark">TM</div>
+      <div class="intro-splash-mark">KQ</div>
       <div class="intro-splash-copy">
-        <strong>Thizza Müller</strong>
-        <span>Este é o seu espaço... Fique a vontade!</span>
+        <strong>Kanban Quest</strong>
+        <span>Organize o seu dia!</span>
       </div>
     </div>
   </div>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand-card">
-        <div class="brand-mark">TM</div>
+        <div class="brand-mark">KQ</div>
         <div class="brand-copy">
-          <h1>Thizza Müller</h1>
+          <h1>Kanban Quest</h1>
           <p>Organize o seu dia!</p>
         </div>
       </div>
@@ -108,8 +108,19 @@
         </div>
 
         <div class="topbar-actions">
-          <button id="renameProjectBtn" class="btn btn-soft">Renomear projeto</button>
-          <button id="deleteProjectBtn" class="btn btn-danger">Excluir projeto</button>
+          <button id="loginOpenBtn" class="btn btn-google-login" type="button">
+            <span class="google-mark" aria-hidden="true">
+              <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#EA4335" d="M9 7.363v3.49h4.85c-.213 1.122-.853 2.072-1.812 2.711l2.928 2.273C16.674 14.266 17.5 11.916 17.5 9c0-.554-.05-1.087-.143-1.637H9z"/>
+                <path fill="#34A853" d="M9 17.5c2.43 0 4.469-.805 5.958-2.184l-2.928-2.273c-.812.544-1.852.866-3.03.866-2.33 0-4.303-1.574-5.008-3.69H.964v2.319A8.998 8.998 0 009 17.5z"/>
+                <path fill="#4A90E2" d="M3.992 10.219A5.396 5.396 0 013.712 9c0-.423.1-.83.28-1.219V5.462H.964A8.998 8.998 0 00.5 9c0 1.45.348 2.82.964 4.038l2.528-1.962z"/>
+                <path fill="#FBBC05" d="M9 4.091c1.321 0 2.507.455 3.441 1.348l2.58-2.58C13.464 1.412 11.427.5 9 .5A8.998 8.998 0 00.964 5.462L3.992 7.78C4.697 5.665 6.67 4.091 9 4.091z"/>
+              </svg>
+            </span>
+            <span class="btn-google-text">Entrar com Google</span>
+          </button>
+          <button id="profileBtn" class="btn btn-soft hidden" type="button">Perfil</button>
+          <button id="logoutBtn" class="btn btn-soft hidden" type="button">Sair</button>
         </div>
       </header>
 
@@ -148,6 +159,12 @@
         </div>
       </section>
     </main>
+  </div>
+
+
+  <div id="projectActionsMenu" class="project-actions-menu hidden" aria-hidden="true">
+    <button id="projectActionRenameBtn" class="project-actions-item" type="button">✏️ Renomear projeto</button>
+    <button id="projectActionDeleteBtn" class="project-actions-item danger" type="button">🗑️ Excluir projeto</button>
   </div>
 
   <!-- Modal de Projeto -->
@@ -296,6 +313,68 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <!-- Auth modal -->
+  <div class="modal-overlay hidden" id="authModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm auth-modal-card">
+      <div class="modal-header">
+        <h3>Entrar / Cadastro</h3>
+        <button class="icon-btn" id="closeAuthModalBtn" type="button">✕</button>
+      </div>
+
+      <div class="modal-body auth-modal-body">
+        <div class="auth-brand">
+          <div class="auth-brand-mark">KQ</div>
+          <div>
+            <strong>Acesse sua conta</strong>
+            <p>Login simples com Google. No primeiro acesso, sua conta já é criada automaticamente.</p>
+          </div>
+        </div>
+
+        <button id="googleLoginBtn" class="btn btn-primary btn-auth-google" type="button">
+          <span class="google-mark" aria-hidden="true">
+            <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#EA4335" d="M9 7.363v3.49h4.85c-.213 1.122-.853 2.072-1.812 2.711l2.928 2.273C16.674 14.266 17.5 11.916 17.5 9c0-.554-.05-1.087-.143-1.637H9z"/>
+              <path fill="#34A853" d="M9 17.5c2.43 0 4.469-.805 5.958-2.184l-2.928-2.273c-.812.544-1.852.866-3.03.866-2.33 0-4.303-1.574-5.008-3.69H.964v2.319A8.998 8.998 0 009 17.5z"/>
+              <path fill="#4A90E2" d="M3.992 10.219A5.396 5.396 0 013.712 9c0-.423.1-.83.28-1.219V5.462H.964A8.998 8.998 0 00.5 9c0 1.45.348 2.82.964 4.038l2.528-1.962z"/>
+              <path fill="#FBBC05" d="M9 4.091c1.321 0 2.507.455 3.441 1.348l2.58-2.58C13.464 1.412 11.427.5 9 .5A8.998 8.998 0 00.964 5.462L3.992 7.78C4.697 5.665 6.67 4.091 9 4.091z"/>
+            </svg>
+          </span>
+          <span class="btn-google-text">Entrar com Google</span>
+        </button>
+
+        <p id="authConfigHint" class="auth-config-hint hidden">
+          Preencha a SUPABASE_URL e a SUPABASE_ANON_KEY no arquivo <strong>app.js</strong> para ativar o login.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile modal -->
+  <div class="modal-overlay hidden" id="profileModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm auth-modal-card">
+      <div class="modal-header">
+        <h3>Perfil</h3>
+        <button class="icon-btn" id="closeProfileModalBtn" type="button">✕</button>
+      </div>
+
+      <div class="modal-body profile-modal-body">
+        <div class="profile-user-card">
+          <img id="profileAvatar" class="profile-avatar hidden" alt="Avatar do usuário" />
+          <div id="profileAvatarFallback" class="profile-avatar-fallback">KQ</div>
+          <div class="profile-user-copy">
+            <strong id="profileName">Visitante</strong>
+            <span id="profileEmail">Faça login para conectar sua conta.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="closeProfileFooterBtn" class="btn btn-primary" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>
