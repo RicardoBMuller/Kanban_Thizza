@@ -36,6 +36,7 @@ const searchInput = document.getElementById("searchInput");
 const boardTitle = document.getElementById("boardTitle");
 const sidebarToggleBtn = document.getElementById("sidebarToggleBtn");
 const appShell = document.querySelector(".app-shell");
+const sidebarEl = document.querySelector(".sidebar");
 const mainArea = document.querySelector(".main-area");
 const dashTotalCards = document.getElementById("dashTotalCards");
 const dashCompletedCards = document.getElementById("dashCompletedCards");
@@ -60,6 +61,7 @@ const logoutBtn = document.getElementById("logoutBtn");
 const brandUserName = document.getElementById("brandUserName");
 const brandAvatar = document.getElementById("brandAvatar");
 const brandMark = document.getElementById("brandMark");
+const mobileSidebarCloseBtn = document.getElementById("mobileSidebarCloseBtn");
 const authModalOverlay = document.getElementById("authModalOverlay");
 const closeAuthModalBtn = document.getElementById("closeAuthModalBtn");
 const googleLoginBtn = document.getElementById("googleLoginBtn");
@@ -223,9 +225,10 @@ function bindEvents() {
 
   on(lightBtn, "click", () => setTheme("light"));
   on(darkBtn, "click", () => setTheme("dark"));
-  on(sidebarToggleBtn, "click", (e) => { e.stopPropagation(); toggleSidebar(); });
-  window.addEventListener("resize", handleResponsiveLayout);
-  on(mainArea, "click", () => { if (isMobileViewport() && appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar(); });
+  on(sidebarToggleBtn, "click", () => { toggleSidebar(); updateSidebarToggleButton(appShell.classList.contains("sidebar-collapsed")); });
+  on(mobileSidebarCloseBtn, "click", () => { closeMobileSidebar(); updateSidebarToggleButton(false); });
+  on(mainArea, "click", () => { if (isMobileLayout() && appShell.classList.contains("sidebar-open")) { closeMobileSidebar(); updateSidebarToggleButton(false); } });
+  on(window, "resize", () => { applySavedSidebar(); });
 
   on(loginOpenBtn, "click", openAuthModal);
   on(profileBtn, "click", openProfileModal);
@@ -1404,61 +1407,46 @@ function updateDashboard(project) {
 }
 
 
-function isMobileViewport() {
-  return window.innerWidth <= 980;
-}
-
-function openMobileSidebar() {
-  appShell.classList.add("mobile-sidebar-open");
-  appShell.classList.remove("sidebar-collapsed");
-  updateSidebarToggleButton(false);
+function isMobileLayout() {
+  return window.innerWidth <= 900;
 }
 
 function closeMobileSidebar() {
-  appShell.classList.remove("mobile-sidebar-open");
-  updateSidebarToggleButton(true);
+  appShell.classList.remove("sidebar-open");
 }
 
 function toggleSidebar() {
-  if (isMobileViewport()) {
-    if (appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar();
-    else openMobileSidebar();
+  if (isMobileLayout()) {
+    appShell.classList.toggle("sidebar-open");
     return;
   }
-
   const collapsed = appShell.classList.toggle("sidebar-collapsed");
   safeSetItem(SIDEBAR_KEY, collapsed ? "1" : "0");
   updateSidebarToggleButton(collapsed);
 }
 
 function applySavedSidebar() {
-  if (isMobileViewport()) {
+  if (isMobileLayout()) {
     appShell.classList.remove("sidebar-collapsed");
-    appShell.classList.remove("mobile-sidebar-open");
-    updateSidebarToggleButton(true);
+    appShell.classList.remove("sidebar-open");
+    updateSidebarToggleButton(false);
     return;
   }
-
   const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
-  appShell.classList.remove("mobile-sidebar-open");
   appShell.classList.toggle("sidebar-collapsed", collapsed);
+  appShell.classList.remove("sidebar-open");
   updateSidebarToggleButton(collapsed);
 }
 
-function handleResponsiveLayout() {
-  if (isMobileViewport()) {
-    appShell.classList.remove("sidebar-collapsed");
-    if (!appShell.classList.contains("mobile-sidebar-open")) updateSidebarToggleButton(true);
-  } else {
-    appShell.classList.remove("mobile-sidebar-open");
-    const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
-    appShell.classList.toggle("sidebar-collapsed", collapsed);
-    updateSidebarToggleButton(collapsed);
-  }
-}
-
 function updateSidebarToggleButton(collapsed) {
-  sidebarToggleBtn.textContent = collapsed ? "☰" : "✕";
+  if (isMobileLayout()) {
+    const opened = appShell.classList.contains("sidebar-open");
+    sidebarToggleBtn.textContent = opened ? "✕" : "☰";
+    sidebarToggleBtn.setAttribute("aria-label", opened ? "Fechar menu lateral" : "Abrir menu lateral");
+    sidebarToggleBtn.setAttribute("title", opened ? "Fechar menu lateral" : "Abrir menu lateral");
+    return;
+  }
+  sidebarToggleBtn.textContent = collapsed ? "☷" : "☰";
   sidebarToggleBtn.setAttribute("aria-label", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
   sidebarToggleBtn.setAttribute("title", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
 }
