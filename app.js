@@ -508,61 +508,78 @@ async function handleSaveProfile() {
   const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" }).select().single();
   if (error) {
     console.error("Erro ao salvar perfil:", error);
-    showSystemModal("Erro", "Não foi possível salvar as informações do perfil.");
     return;
   }
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual com modal do sistema em vez de alerta
-  showSystemModal("Sucesso", "As informações do seu perfil foram salvas com sucesso!");
+  // Feedback visual dentro do próprio modal de perfil
+  const originalText = saveProfileBtn.textContent;
+  saveProfileBtn.textContent = "✅ Salvo!";
+  saveProfileBtn.classList.add("btn-success");
+  setTimeout(() => {
+    saveProfileBtn.textContent = originalText;
+    saveProfileBtn.classList.remove("btn-success");
+  }, 2500);
 }
 
-// Funções para Modais de Sistema (Sucesso e Confirmação)
-function showSystemModal(title, message) {
-  projectModalTitle.textContent = title;
-  const originalBody = projectModalOverlay.querySelector(".modal-body").innerHTML;
-  projectModalOverlay.querySelector(".modal-body").innerHTML = `<p class="view-text">${message}</p>`;
-  saveProjectBtn.classList.add("hidden");
-  cancelProjectBtn.textContent = "OK";
-  
-  const restore = () => {
-    projectModalOverlay.querySelector(".modal-body").innerHTML = originalBody;
-    saveProjectBtn.classList.remove("hidden");
-    cancelProjectBtn.textContent = "Cancelar";
-    cancelProjectBtn.removeEventListener("click", restore);
-    closeProjectModal();
-  };
-  
-  cancelProjectBtn.addEventListener("click", restore);
-  openModal(projectModalOverlay);
-}
-
+// Funções para Modais de Sistema (Logout)
 function showSystemConfirmModal(title, message, onConfirm) {
   projectModalTitle.textContent = title;
-  const originalBody = projectModalOverlay.querySelector(".modal-body").innerHTML;
-  projectModalOverlay.querySelector(".modal-body").innerHTML = `<p class="view-text">${message}</p>`;
+  const modalBody = projectModalOverlay.querySelector(".modal-body");
+  const originalContent = modalBody.innerHTML;
+  modalBody.innerHTML = `<p class="view-text">${message}</p>`;
   
-  const restore = () => {
-    projectModalOverlay.querySelector(".modal-body").innerHTML = originalBody;
-    saveProjectBtn.textContent = "Salvar";
-    cancelProjectBtn.textContent = "Cancelar";
-    saveProjectBtn.removeEventListener("click", runConfirm);
-    cancelProjectBtn.removeEventListener("click", restore);
-  };
+  // Clone para remover eventos antigos (como o de salvar projeto)
+  const newSaveBtn = saveProjectBtn.cloneNode(true);
+  const newCancelBtn = cancelProjectBtn.cloneNode(true);
+  saveProjectBtn.parentNode.replaceChild(newSaveBtn, saveProjectBtn);
+  cancelProjectBtn.parentNode.replaceChild(newCancelBtn, cancelProjectBtn);
 
-  const runConfirm = () => {
-    onConfirm();
-    restore();
+  const restore = () => {
+    modalBody.innerHTML = originalContent;
+    newSaveBtn.parentNode.replaceChild(saveProjectBtn, newSaveBtn);
+    newCancelBtn.parentNode.replaceChild(cancelProjectBtn, newCancelBtn);
     closeProjectModal();
   };
 
-  saveProjectBtn.textContent = "Sim";
-  cancelProjectBtn.textContent = "Não";
+  newSaveBtn.textContent = "Sim";
+  newCancelBtn.textContent = "Não";
   
-  saveProjectBtn.addEventListener("click", runConfirm);
-  cancelProjectBtn.addEventListener("click", restore);
+  newSaveBtn.onclick = () => { onConfirm(); restore(); };
+  newCancelBtn.onclick = restore;
   openModal(projectModalOverlay);
+}
+
+async function handleLogout() {
+  if (!supabase) return;
+  showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
+    const { fullName, avatarUrl } = getUserPresentation(authUser);
+    showGoodbyeSplash(fullName, avatarUrl);
+    setTimeout(async () => {
+      await supabase.auth.signOut();
+      window.location.reload();
+    }, 2800);
+  });
+}
+
+function showGoodbyeSplash(fullName, avatarUrl) {
+  const splash = document.createElement("div");
+  splash.className = "intro-splash intro-splash-welcome";
+  const initials = getInitials(fullName);
+  const mark = avatarUrl
+    ? `<img class="intro-splash-mark intro-splash-avatar" src="${escapeHtml(avatarUrl)}">`
+    : `<div class="intro-splash-mark intro-splash-avatar-fallback">${escapeHtml(initials)}</div>`;
+  splash.innerHTML = `
+    <div class="intro-splash-glow"></div>
+    <div class="intro-splash-card">
+      ${mark}
+      <div class="intro-splash-copy">
+        <strong>Até logo, ${escapeHtml(fullName)}!</strong>
+        <span>Sua sessão foi encerrada com segurança. Volte logo!</span>
+      </div>
+    </div>`;
+  document.body.appendChild(splash);
 }
 
 async function loadCloudData() {
@@ -918,22 +935,6 @@ async function handleGoogleLogin() {
     console.error("Erro no login com Google:", error);
     alert("Não foi possível iniciar o login com Google.");
   }
-}
-
-async function handleLogout() {
-  if (!supabase) return;
-  
-  // Confirmação visual integrada ao sistema
-  showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
-    try {
-      try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
-      await supabase.auth.signOut();
-      closeProfileModal();
-      window.location.reload(); // Recarrega para limpar o estado
-    } catch (error) {
-      console.error("Erro ao sair:", error);
-    }
-  });
 }
 
 function participantDisplayName(participant) {
