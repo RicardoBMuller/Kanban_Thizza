@@ -30,8 +30,12 @@ const modalCloseTimers = new WeakMap();
 
 let supabase = null;
 let authUser = null;
-let authProfile = null;
+let profileRecord = null;
 let tempParticipants = [];
+let participantSearchResults = [];
+let suspendCloudSync = false;
+let cloudSyncTimer = null;
+let isSyncingCloud = false;
 
 // DOM
 const projectList = document.getElementById("projectList");
@@ -77,7 +81,6 @@ const profileAvatarFallback = document.getElementById("profileAvatarFallback");
 const profilePhoneInput = document.getElementById("profilePhoneInput");
 const profileSectorInput = document.getElementById("profileSectorInput");
 const profileBioInput = document.getElementById("profileBioInput");
-const profileSaveStatus = document.getElementById("profileSaveStatus");
 const saveProfileBtn = document.getElementById("saveProfileBtn");
 const projectActionsMenu = document.getElementById("projectActionsMenu");
 const projectActionRenameBtn = document.getElementById("projectActionRenameBtn");
@@ -110,10 +113,8 @@ const cardOwnerInput = document.getElementById("cardOwnerInput");
 const cardDateInput = document.getElementById("cardDateInput");
 const cardLabelsInput = document.getElementById("cardLabelsInput");
 const cardParticipantsInput = document.getElementById("cardParticipantsInput");
-const participantSearchInput = document.getElementById("participantSearchInput");
-const participantSearchBtn = document.getElementById("participantSearchBtn");
-const participantSearchResults = document.getElementById("participantSearchResults");
-const participantSearchStatus = document.getElementById("participantSearchStatus");
+const cardCheckParticipantBtn = document.getElementById("cardCheckParticipantBtn");
+const participantSearchResultsEl = document.getElementById("participantSearchResults");
 const selectedParticipantsList = document.getElementById("selectedParticipantsList");
 
 const newChecklistItemInput = document.getElementById("newChecklistItemInput");
@@ -269,6 +270,9 @@ function bindEvents() {
   on(googleLoginBtn, "click", handleGoogleLogin);
   on(closeProfileModalBtn, "click", closeProfileModal);
   on(closeProfileFooterBtn, "click", closeProfileModal);
+  on(saveProfileBtn, "click", handleSaveProfile);
+  on(cardCheckParticipantBtn, "click", handleCheckParticipant);
+  on(cardParticipantsInput, "keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); handleCheckParticipant(); } });
 
   addCardButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -376,6 +380,8 @@ function isSupabaseConfigured() {
 
 async function initAuth() {
   if (!isSupabaseConfigured()) {
+    authConfigHint.classList.remove("hidden");
+    clearDataForSignedOutUser();
     updateAuthUI(null);
     return;
   }
@@ -391,27 +397,33 @@ async function initAuth() {
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
 
-    await refreshAuthUser(data.session?.user || null);
-    await loadOwnProfile();
-    maybeShowLoginWelcome(data.session?.user || null);
+    await handleSessionUser(data.session?.user || null, { showWelcome: true });
 
     supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        await refreshAuthUser(session.user);
-        await loadOwnProfile();
-        closeAuthModal();
-        maybeShowLoginWelcome(session.user);
-      } else {
-        authUser = null;
-        authProfile = null;
-        try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
-        updateAuthUI(null);
-      }
+      await handleSessionUser(session?.user || null, { showWelcome: true });
     });
   } catch (error) {
     console.error("Erro ao iniciar Supabase Auth:", error);
     updateAuthUI(null);
   }
+}
+
+async function handleSessionUser(sessionUser, { showWelcome = false } = {}) {
+  if (!sessionUser) {
+    profileRecord = null;
+    clearDataForSignedOutUser();
+    authUser = null;
+    try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
+    updateAuthUI(null);
+    return;
+  }
+
+  await refreshAuthUser(sessionUser);
+  await ensureProfileRecord();
+  await loadCloudData();
+  updateAuthUI(authUser);
+  closeAuthModal();
+  if (showWelcome) maybeShowLoginWelcome(authUser);
 }
 
 function getIdentityData(user) {
@@ -424,9 +436,9 @@ function getIdentityData(user) {
 function getUserPresentation(user) {
   const metadata = user?.user_metadata || {};
   const identityData = getIdentityData(user);
-  const fullName = authProfile?.full_name || metadata.full_name || metadata.name || identityData.full_name || identityData.name || user?.email?.split("@")[0] || "Usuário";
-  const email = authProfile?.email || user?.email || metadata.email || identityData.email || "";
-  const avatarUrl = authProfile?.avatar_url || metadata.avatar_url || metadata.picture || identityData.avatar_url || identityData.picture || "";
+  const fullName = profileRecord?.full_name || metadata.full_name || metadata.name || identityData.full_name || identityData.name || user?.email?.split("@")[0] || "Usuário";
+  const email = profileRecord?.email || user?.email || metadata.email || identityData.email || "";
+  const avatarUrl = profileRecord?.avatar_url || metadata.avatar_url || metadata.picture || identityData.avatar_url || identityData.picture || "";
   return { fullName, email, avatarUrl };
 }
 
@@ -435,66 +447,274 @@ async function refreshAuthUser(baseUser = null) {
   if (supabase) {
     try {
       const { data, error } = await supabase.auth.getUser();
-      if (!error && data?.user) {
-        nextUser = data.user;
-      }
+      if (!error && data?.user) nextUser = data.user;
     } catch (error) {
       console.warn("Não foi possível hidratar o usuário autenticado:", error);
     }
   }
   authUser = nextUser;
-  if (authUser) {
-    await syncProfileFromAuth(authUser);
-  } else {
-    authProfile = null;
-  }
   updateAuthUI(authUser);
   return authUser;
 }
 
-async function syncProfileFromAuth(user) {
-  if (!supabase || !user) return null;
-  const info = getUserPresentation(user);
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .upsert({
-        id: user.id,
-        full_name: info.fullName,
-        email: info.email,
-        avatar_url: info.avatarUrl || null,
-        provider: user.app_metadata?.provider || "google"
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    authProfile = data || null;
-    return authProfile;
-  } catch (error) {
-    console.warn("Não foi possível sincronizar o perfil no banco:", error);
+async function ensureProfileRecord() {
+  if (!supabase || !authUser) return null;
+
+  const presentation = getUserPresentation(authUser);
+  const payload = {
+    user_id: authUser.id,
+    full_name: presentation.fullName,
+    email: presentation.email,
+    avatar_url: presentation.avatarUrl
+  };
+
+  const upsertRes = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" }).select().single();
+  if (upsertRes.error && upsertRes.error.code !== "PGRST116") {
+    console.error("Erro ao criar/atualizar perfil:", upsertRes.error);
+  }
+
+  const { data, error } = await supabase.from("profiles").select("*").eq("user_id", authUser.id).maybeSingle();
+  if (error) {
+    console.error("Erro ao carregar perfil:", error);
     return null;
   }
+  profileRecord = data || payload;
+  fillProfileForm();
+  return profileRecord;
 }
 
-async function loadOwnProfile() {
-  if (!supabase || !authUser) {
-    authProfile = null;
-    updateAuthUI(authUser);
-    return null;
+function fillProfileForm() {
+  if (!profilePhoneInput || !profileSectorInput || !profileBioInput) return;
+  profilePhoneInput.value = profileRecord?.phone || "";
+  profileSectorInput.value = profileRecord?.sector || "";
+  profileBioInput.value = profileRecord?.bio || "";
+}
+
+async function handleSaveProfile() {
+  if (!requireAuth("salvar o perfil")) return;
+  if (!supabase || !authUser) return;
+
+  const presentation = getUserPresentation(authUser);
+  const payload = {
+    user_id: authUser.id,
+    full_name: presentation.fullName,
+    email: presentation.email,
+    avatar_url: presentation.avatarUrl,
+    phone: profilePhoneInput?.value.trim() || null,
+    sector: profileSectorInput?.value.trim() || null,
+    bio: profileBioInput?.value.trim() || null
+  };
+
+  const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" }).select().single();
+  if (error) {
+    console.error("Erro ao salvar perfil:", error);
+    alert("Não foi possível salvar o perfil.");
+    return;
   }
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, avatar_url, phone, sector, bio, provider")
-      .eq("id", authUser.id)
-      .single();
-    if (error) throw error;
-    authProfile = data || null;
-  } catch (error) {
-    console.warn("Não foi possível carregar o perfil:", error);
-  }
+  profileRecord = data;
   updateAuthUI(authUser);
-  return authProfile;
+  alert("Perfil salvo com sucesso.");
+}
+
+async function loadCloudData() {
+  if (!supabase || !authUser) return;
+
+  const [projectsRes, cardsRes] = await Promise.all([
+    supabase.from("projects").select("id,name,created_at").eq("owner_id", authUser.id).order("created_at", { ascending: true }),
+    supabase.from("cards").select("*").eq("owner_id", authUser.id).order("position", { ascending: true })
+  ]);
+
+  if (projectsRes.error) {
+    console.error("Erro ao carregar projetos:", projectsRes.error);
+    return;
+  }
+  if (cardsRes.error) {
+    console.error("Erro ao carregar cards:", cardsRes.error);
+    return;
+  }
+
+  const nextState = { currentProjectId: null, projects: [] };
+  const projectMap = new Map();
+
+  (projectsRes.data || []).forEach((project) => {
+    const item = {
+      id: project.id,
+      name: project.name,
+      createdAt: project.created_at,
+      columns: defaultColumns()
+    };
+    projectMap.set(project.id, item);
+    nextState.projects.push(item);
+  });
+
+  (cardsRes.data || []).forEach((row) => {
+    const targetProject = projectMap.get(row.project_id);
+    if (!targetProject) return;
+    const columnKey = row.column_key || "todo";
+    const card = {
+      id: row.id,
+      title: row.title || "Sem título",
+      description: row.description || "",
+      owner: row.owner || "",
+      date: row.due_date || "",
+      labels: Array.isArray(row.labels) ? row.labels : [],
+      participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : []),
+      checklist: Array.isArray(row.checklist) ? row.checklist : [],
+      comments: Array.isArray(row.comments) ? row.comments : [],
+      createdAt: row.created_at || new Date().toISOString()
+    };
+    if (!targetProject.columns[columnKey]) targetProject.columns[columnKey] = [];
+    targetProject.columns[columnKey].push(card);
+  });
+
+  suspendCloudSync = true;
+  state = nextState;
+  currentProjectId = nextState.projects.find((project) => project.id === currentProjectId)?.id || nextState.projects[0]?.id || null;
+  saveState();
+  suspendCloudSync = false;
+  renderProjects();
+  renderBoard();
+}
+
+function clearDataForSignedOutUser() {
+  suspendCloudSync = true;
+  state = { currentProjectId: null, projects: [] };
+  currentProjectId = null;
+  saveState();
+  suspendCloudSync = false;
+  renderProjects();
+  renderBoard();
+}
+
+function queueCloudSync() {
+  if (!supabase || !authUser || suspendCloudSync) return;
+  if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(() => {
+    syncAllToCloud().catch((error) => console.error("Erro ao sincronizar com o Supabase:", error));
+  }, 400);
+}
+
+function flattenCardsForCloud() {
+  const rows = [];
+  state.projects.forEach((project) => {
+    Object.entries(project.columns || {}).forEach(([columnKey, cards]) => {
+      (cards || []).forEach((card, index) => {
+        rows.push({
+          id: String(card.id),
+          owner_id: authUser.id,
+          project_id: String(project.id),
+          column_key: columnKey,
+          position: index,
+          title: card.title || "Sem título",
+          description: card.description || "",
+          owner: card.owner || "",
+          due_date: card.date || null,
+          labels: Array.isArray(card.labels) ? card.labels : [],
+          participants: normalizeParticipants(card.participants || []),
+          checklist: Array.isArray(card.checklist) ? card.checklist : [],
+          comments: Array.isArray(card.comments) ? card.comments : [],
+          created_at: card.createdAt || new Date().toISOString()
+        });
+      });
+    });
+  });
+  return rows;
+}
+
+function flattenParticipantLinks() {
+  const rows = [];
+  state.projects.forEach((project) => {
+    Object.values(project.columns || {}).flat().forEach((card) => {
+      normalizeParticipants(card.participants || []).forEach((participant) => {
+        if (!participant.user_id) return;
+        rows.push({
+          card_id: String(card.id),
+          participant_user_id: participant.user_id,
+          owner_id: authUser.id,
+          project_id: String(project.id),
+          participant_name: participantDisplayName(participant),
+          participant_email: participantEmail(participant),
+          participant_avatar_url: participant.avatar_url || null
+        });
+      });
+    });
+  });
+  return rows;
+}
+
+async function syncAllToCloud() {
+  if (!supabase || !authUser || suspendCloudSync || isSyncingCloud) return;
+  isSyncingCloud = true;
+
+  try {
+    const projectRows = state.projects.map((project) => ({
+      id: String(project.id),
+      owner_id: authUser.id,
+      name: project.name,
+      created_at: project.createdAt || new Date().toISOString()
+    }));
+
+    const remoteProjectsRes = await supabase.from("projects").select("id").eq("owner_id", authUser.id);
+    if (remoteProjectsRes.error) throw remoteProjectsRes.error;
+    const remoteProjectIds = (remoteProjectsRes.data || []).map((row) => row.id);
+    const localProjectIds = projectRows.map((row) => row.id);
+
+    if (projectRows.length) {
+      const upsertProjects = await supabase.from("projects").upsert(projectRows, { onConflict: "id" });
+      if (upsertProjects.error) throw upsertProjects.error;
+    }
+
+    const projectsToDelete = remoteProjectIds.filter((id) => !localProjectIds.includes(id));
+    if (projectsToDelete.length) {
+      const delProjects = await supabase.from("projects").delete().eq("owner_id", authUser.id).in("id", projectsToDelete);
+      if (delProjects.error) throw delProjects.error;
+    }
+    if (!localProjectIds.length && remoteProjectIds.length) {
+      const delAllProjects = await supabase.from("projects").delete().eq("owner_id", authUser.id);
+      if (delAllProjects.error) throw delAllProjects.error;
+    }
+
+    const cardRows = flattenCardsForCloud();
+    const remoteCardsRes = await supabase.from("cards").select("id").eq("owner_id", authUser.id);
+    if (remoteCardsRes.error) throw remoteCardsRes.error;
+    const remoteCardIds = (remoteCardsRes.data || []).map((row) => row.id);
+    const localCardIds = cardRows.map((row) => row.id);
+
+    if (cardRows.length) {
+      const upsertCards = await supabase.from("cards").upsert(cardRows, { onConflict: "id" });
+      if (upsertCards.error) throw upsertCards.error;
+    }
+
+    const cardsToDelete = remoteCardIds.filter((id) => !localCardIds.includes(id));
+    if (cardsToDelete.length) {
+      const delCards = await supabase.from("cards").delete().eq("owner_id", authUser.id).in("id", cardsToDelete);
+      if (delCards.error) throw delCards.error;
+    }
+    if (!localCardIds.length && remoteCardIds.length) {
+      const delAllCards = await supabase.from("cards").delete().eq("owner_id", authUser.id);
+      if (delAllCards.error) throw delAllCards.error;
+    }
+
+    const participantRows = flattenParticipantLinks();
+    const remoteParticipantsRes = await supabase.from("card_participants").select("card_id,participant_user_id").eq("owner_id", authUser.id);
+    if (remoteParticipantsRes.error) throw remoteParticipantsRes.error;
+    const remoteKeys = (remoteParticipantsRes.data || []).map((row) => `${row.card_id}::${row.participant_user_id}`);
+    const localKeys = participantRows.map((row) => `${row.card_id}::${row.participant_user_id}`);
+
+    if (participantRows.length) {
+      const upsertParticipants = await supabase.from("card_participants").upsert(participantRows, { onConflict: "card_id,participant_user_id" });
+      if (upsertParticipants.error) throw upsertParticipants.error;
+    }
+
+    const participantDeletes = remoteKeys.filter((key) => !localKeys.includes(key));
+    for (const key of participantDeletes) {
+      const [card_id, participant_user_id] = key.split("::");
+      const delParticipant = await supabase.from("card_participants").delete().eq("owner_id", authUser.id).eq("card_id", card_id).eq("participant_user_id", participant_user_id);
+      if (delParticipant.error) throw delParticipant.error;
+    }
+  } finally {
+    isSyncingCloud = false;
+  }
 }
 
 function maybeShowLoginWelcome(user) {
@@ -544,23 +764,12 @@ function showWelcomeSplash(fullName, avatarUrl) {
   setTimeout(() => splash.remove(), 4100);
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function updateAuthUI(user) {
   const isLogged = Boolean(user);
-
   const loginLabel = isLogged ? "Conta conectada" : "Entrar com Google";
   loginOpenBtn.innerHTML = `<span class="google-mark" aria-hidden="true"><svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path fill="#EA4335" d="M9 7.363v3.49h4.85c-.213 1.122-.853 2.072-1.812 2.711l2.928 2.273C16.674 14.266 17.5 11.916 17.5 9c0-.554-.05-1.087-.143-1.637H9z"/><path fill="#34A853" d="M9 17.5c2.43 0 4.469-.805 5.958-2.184l-2.928-2.273c-.812.544-1.852.866-3.03.866-2.33 0-4.303-1.574-5.008-3.69H.964v2.319A8.998 8.998 0 009 17.5z"/><path fill="#4A90E2" d="M3.992 10.219A5.396 5.396 0 013.712 9c0-.423.1-.83.28-1.219V5.462H.964A8.998 8.998 0 00.5 9c0 1.45.348 2.82.964 4.038l2.528-1.962z"/><path fill="#FBBC05" d="M9 4.091c1.321 0 2.507.455 3.441 1.348l2.58-2.58C13.464 1.412 11.427.5 9 .5A8.998 8.998 0 00.964 5.462L3.992 7.78C4.697 5.665 6.67 4.091 9 4.091z"/></svg></span><span class="btn-google-text">${loginLabel}</span>`;
   profileBtn.classList.toggle("hidden", !isLogged);
   logoutBtn.classList.toggle("hidden", !isLogged);
-
   loginOpenBtn.disabled = isLogged;
   loginOpenBtn.classList.toggle("is-locked", isLogged);
   loginOpenBtn.setAttribute("aria-disabled", isLogged ? "true" : "false");
@@ -569,15 +778,12 @@ function updateAuthUI(user) {
   if (user) {
     const { fullName, email, avatarUrl } = getUserPresentation(user);
     const initials = getInitials(fullName);
-
     profileName.textContent = fullName;
     profileEmail.textContent = email;
     profileAvatarFallback.textContent = initials;
     brandUserName.textContent = fullName;
     brandMark.textContent = initials;
-    if (profilePhoneInput) profilePhoneInput.value = authProfile?.phone || "";
-    if (profileSectorInput) profileSectorInput.value = authProfile?.sector || "";
-    if (profileBioInput) profileBioInput.value = authProfile?.bio || "";
+    fillProfileForm();
 
     if (avatarUrl) {
       profileAvatar.src = avatarUrl;
@@ -598,9 +804,6 @@ function updateAuthUI(user) {
     profileName.textContent = "Visitante";
     profileEmail.textContent = "Faça login para conectar sua conta.";
     profileAvatarFallback.textContent = "KQ";
-    if (profilePhoneInput) profilePhoneInput.value = "";
-    if (profileSectorInput) profileSectorInput.value = "";
-    if (profileBioInput) profileBioInput.value = "";
     profileAvatar.removeAttribute("src");
     profileAvatar.classList.add("hidden");
     profileAvatarFallback.classList.remove("hidden");
@@ -609,6 +812,9 @@ function updateAuthUI(user) {
     brandAvatar.removeAttribute("src");
     brandAvatar.classList.add("hidden");
     brandMark.classList.remove("hidden");
+    if (profilePhoneInput) profilePhoneInput.value = "";
+    if (profileSectorInput) profileSectorInput.value = "";
+    if (profileBioInput) profileBioInput.value = "";
   }
 
   updateCreationAccess();
@@ -625,170 +831,6 @@ function getInitials(name) {
     .join("") || "KQ";
 }
 
-function normalizeParticipant(participant) {
-  if (!participant) return null;
-  if (typeof participant === "string") {
-    const label = participant.trim();
-    if (!label) return null;
-    return { id: null, full_name: label, email: label, avatar_url: "", sector: "" };
-  }
-  const fullName = participant.full_name || participant.name || participant.email || "Participante";
-  return {
-    id: participant.id || participant.user_id || null,
-    full_name: fullName,
-    email: participant.email || "",
-    avatar_url: participant.avatar_url || "",
-    sector: participant.sector || ""
-  };
-}
-
-function normalizeParticipants(list) {
-  return (Array.isArray(list) ? list : []).map(normalizeParticipant).filter(Boolean);
-}
-
-function participantLabel(participant) {
-  const item = normalizeParticipant(participant);
-  if (!item) return "";
-  return item.full_name || item.email || "Participante";
-}
-
-function renderParticipantPill(participant, removable = false) {
-  const item = normalizeParticipant(participant);
-  if (!item) return "";
-  const initials = escapeHtml(getInitials(item.full_name));
-  const avatar = item.avatar_url
-    ? `<img class="participant-chip-avatar" src="${escapeHtml(item.avatar_url)}" alt="Avatar de ${escapeHtml(item.full_name)}">`
-    : `<span class="participant-chip-avatar-fallback">${initials}</span>`;
-  const sub = item.email && item.email !== item.full_name ? `<small>${escapeHtml(item.email)}</small>` : "";
-  const remove = removable ? `<button type="button" data-remove-participant="${escapeHtml(item.id || item.email || item.full_name)}">✕</button>` : "";
-  return `<span class="selected-participant-chip">${avatar}<span class="participant-search-text"><strong>${escapeHtml(item.full_name)}</strong>${sub}</span>${remove}</span>`;
-}
-
-function setParticipantStatus(message = "", type = "") {
-  if (!participantSearchStatus) return;
-  participantSearchStatus.textContent = message;
-  participantSearchStatus.classList.toggle("hidden", !message);
-  participantSearchStatus.classList.toggle("is-error", type === "error");
-  participantSearchStatus.classList.toggle("is-success", type === "success");
-}
-
-function renderSelectedParticipants() {
-  if (!selectedParticipantsList) return;
-  selectedParticipantsList.innerHTML = "";
-  if (!tempParticipants.length) {
-    selectedParticipantsList.innerHTML = `<div class="empty-state">Nenhum participante adicionado.</div>`;
-  } else {
-    selectedParticipantsList.innerHTML = tempParticipants.map((participant) => renderParticipantPill(participant, true)).join("");
-    selectedParticipantsList.querySelectorAll("button[data-remove-participant]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const key = btn.getAttribute("data-remove-participant");
-        tempParticipants = tempParticipants.filter((participant) => (participant.id || participant.email || participant.full_name) !== key);
-        syncHiddenParticipantsInput();
-        renderSelectedParticipants();
-      });
-    });
-  }
-  syncHiddenParticipantsInput();
-}
-
-function syncHiddenParticipantsInput() {
-  if (!cardParticipantsInput) return;
-  cardParticipantsInput.value = tempParticipants.map((participant) => participant.email || participant.full_name).join(", ");
-}
-
-async function handleParticipantSearch() {
-  if (!requireAuth("buscar participantes")) return;
-  if (!supabase) {
-    setParticipantStatus("Configure o Supabase antes de buscar participantes.", "error");
-    return;
-  }
-  const term = participantSearchInput?.value?.trim();
-  if (!term) {
-    setParticipantStatus("Digite um nome ou email para buscar.", "error");
-    return;
-  }
-  setParticipantStatus("Buscando usuário cadastrado...", "success");
-  if (participantSearchResults) participantSearchResults.innerHTML = "";
-  try {
-    const { data, error } = await supabase.rpc("search_profiles", { search_text: term });
-    if (error) throw error;
-    const results = normalizeParticipants(data || []);
-    if (!results.length) {
-      setParticipantStatus("Nenhum usuário cadastrado encontrado com esse nome/email.", "error");
-      return;
-    }
-    setParticipantStatus(`${results.length} usuário(s) encontrado(s).`, "success");
-    participantSearchResults.innerHTML = results.map((participant) => {
-      const avatar = participant.avatar_url
-        ? `<img class="participant-search-avatar" src="${escapeHtml(participant.avatar_url)}" alt="Avatar de ${escapeHtml(participant.full_name)}">`
-        : `<span class="participant-search-avatar-fallback">${escapeHtml(getInitials(participant.full_name))}</span>`;
-      const sector = participant.sector ? ` · ${escapeHtml(participant.sector)}` : "";
-      return `
-        <div class="participant-search-item">
-          <div class="participant-search-item-copy">
-            ${avatar}
-            <div class="participant-search-text">
-              <strong>${escapeHtml(participant.full_name)}</strong>
-              <span>${escapeHtml(participant.email || "Sem email")}${sector}</span>
-            </div>
-          </div>
-          <button class="btn btn-soft btn-sm" type="button" data-add-participant="${escapeHtml(participant.id || participant.email || participant.full_name)}">Adicionar</button>
-        </div>`;
-    }).join("");
-    participantSearchResults.querySelectorAll("button[data-add-participant]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const key = btn.getAttribute("data-add-participant");
-        const participant = results.find((item) => (item.id || item.email || item.full_name) === key);
-        if (!participant) return;
-        if (tempParticipants.some((item) => (item.id || item.email || item.full_name) === key)) {
-          setParticipantStatus("Esse participante já foi adicionado ao card.", "error");
-          return;
-        }
-        tempParticipants.push(participant);
-        renderSelectedParticipants();
-        setParticipantStatus(`${participant.full_name} foi adicionado ao card.`, "success");
-      });
-    });
-  } catch (error) {
-    console.error("Erro ao buscar participante:", error);
-    setParticipantStatus("Não foi possível consultar a base de usuários agora.", "error");
-  }
-}
-
-async function handleSaveProfile() {
-  if (!authUser || !supabase) return;
-  profileSaveStatus.textContent = "Salvando perfil...";
-  profileSaveStatus.classList.remove("hidden", "is-error");
-  profileSaveStatus.classList.remove("is-success");
-  try {
-    const payload = {
-      id: authUser.id,
-      full_name: getUserPresentation(authUser).fullName,
-      email: getUserPresentation(authUser).email,
-      avatar_url: getUserPresentation(authUser).avatarUrl || null,
-      phone: profilePhoneInput?.value?.trim() || null,
-      sector: profileSectorInput?.value?.trim() || null,
-      bio: profileBioInput?.value?.trim() || null,
-      provider: authUser.app_metadata?.provider || "google"
-    };
-    const { data, error } = await supabase
-      .from("profiles")
-      .upsert(payload)
-      .select()
-      .single();
-    if (error) throw error;
-    authProfile = data || authProfile;
-    updateAuthUI(authUser);
-    profileSaveStatus.textContent = "Perfil salvo com sucesso.";
-    profileSaveStatus.classList.add("is-success");
-  } catch (error) {
-    console.error("Erro ao salvar perfil:", error);
-    profileSaveStatus.textContent = "Não foi possível salvar o perfil agora.";
-    profileSaveStatus.classList.add("is-error");
-  }
-  profileSaveStatus.classList.remove("hidden");
-}
-
 function openAuthModal() {
   if (authUser) return;
   authConfigHint.classList.toggle("hidden", isSupabaseConfigured());
@@ -801,6 +843,7 @@ function closeAuthModal() {
 }
 
 function openProfileModal() {
+  if (profileRecord) fillProfileForm();
   openModal(profileModalOverlay);
 }
 
@@ -830,7 +873,6 @@ async function handleGoogleLogin() {
 
 async function handleLogout() {
   if (!supabase) return;
-
   try {
     try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
     await supabase.auth.signOut();
@@ -840,6 +882,134 @@ async function handleLogout() {
   }
 }
 
+function participantDisplayName(participant) {
+  if (!participant) return "";
+  return participant.full_name || participant.name || participant.email || String(participant);
+}
+
+function participantEmail(participant) {
+  if (!participant || typeof participant === "string") return "";
+  return participant.email || "";
+}
+
+function normalizeParticipant(participant) {
+  if (!participant) return null;
+  if (typeof participant === "string") return { user_id: null, full_name: participant, email: "", avatar_url: "" };
+  return {
+    user_id: participant.user_id || participant.id || null,
+    full_name: participant.full_name || participant.name || participant.email || "Participante",
+    email: participant.email || "",
+    avatar_url: participant.avatar_url || participant.picture || ""
+  };
+}
+
+function normalizeParticipants(participants) {
+  return (Array.isArray(participants) ? participants : []).map(normalizeParticipant).filter(Boolean);
+}
+
+function renderSelectedParticipants() {
+  if (!selectedParticipantsList) return;
+  selectedParticipantsList.innerHTML = "";
+  if (!tempParticipants.length) {
+    selectedParticipantsList.innerHTML = `<div class="participant-search-empty">Nenhum participante selecionado.</div>`;
+    return;
+  }
+
+  tempParticipants.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "selected-participant-item";
+    const initials = getInitials(participantDisplayName(participant));
+    row.innerHTML = `
+      <div class="selected-participant-main">
+        ${participant.avatar_url ? `<img class="selected-participant-avatar" src="${escapeHtml(participant.avatar_url)}" alt="${escapeHtml(participantDisplayName(participant))}">` : `<div class="selected-participant-avatar">${escapeHtml(initials)}</div>`}
+        <div class="selected-participant-copy">
+          <strong>${escapeHtml(participantDisplayName(participant))}</strong>
+          <span>${escapeHtml(participantEmail(participant) || "Participante adicionado")}</span>
+        </div>
+      </div>
+      <button class="btn btn-soft btn-sm" type="button">Remover</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => removeParticipantFromTemp(participant.user_id || participant.email || participantDisplayName(participant)));
+    selectedParticipantsList.appendChild(row);
+  });
+}
+
+function renderParticipantSearchResults() {
+  if (!participantSearchResultsEl) return;
+  participantSearchResultsEl.innerHTML = "";
+  if (!participantSearchResults.length) return;
+
+  participantSearchResults.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "participant-result-item";
+    const initials = getInitials(participantDisplayName(participant));
+    row.innerHTML = `
+      <div class="participant-result-main">
+        ${participant.avatar_url ? `<img class="participant-result-avatar" src="${escapeHtml(participant.avatar_url)}" alt="${escapeHtml(participantDisplayName(participant))}">` : `<div class="participant-result-avatar">${escapeHtml(initials)}</div>`}
+        <div class="participant-result-copy">
+          <strong>${escapeHtml(participantDisplayName(participant))}</strong>
+          <span>${escapeHtml(participantEmail(participant) || "Usuário cadastrado")}</span>
+        </div>
+      </div>
+      <button class="btn btn-soft btn-sm" type="button">Adicionar</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => addParticipantToTemp(participant));
+    participantSearchResultsEl.appendChild(row);
+  });
+}
+
+function addParticipantToTemp(participant) {
+  const normalized = normalizeParticipant(participant);
+  const key = normalized.user_id || normalized.email || participantDisplayName(normalized);
+  const exists = tempParticipants.some((item) => (item.user_id || item.email || participantDisplayName(item)) === key);
+  if (exists) return;
+  tempParticipants.push(normalized);
+  renderSelectedParticipants();
+}
+
+function removeParticipantFromTemp(key) {
+  tempParticipants = tempParticipants.filter((item) => (item.user_id || item.email || participantDisplayName(item)) !== key);
+  renderSelectedParticipants();
+}
+
+async function handleCheckParticipant() {
+  if (!requireAuth("buscar participantes")) return;
+  const term = cardParticipantsInput?.value.trim();
+  if (!term) {
+    participantSearchResults = [];
+    renderParticipantSearchResults();
+    return;
+  }
+  if (!supabase) {
+    alert("Configure o Supabase para buscar participantes.");
+    return;
+  }
+
+  let data = null;
+  const rpcResult = await supabase.rpc("search_profiles", { search_term: term });
+  if (!rpcResult.error) {
+    data = rpcResult.data;
+  } else {
+    const fallback = await supabase
+      .from("profiles")
+      .select("user_id, full_name, email, avatar_url")
+      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
+      .limit(8);
+    if (fallback.error) {
+      console.error("Erro ao buscar participantes:", fallback.error);
+      alert("Não foi possível buscar participantes.");
+      return;
+    }
+    data = fallback.data;
+  }
+
+  participantSearchResults = normalizeParticipants(data || []).filter((participant) => participant.user_id !== authUser.id);
+  if (!participantSearchResults.length) {
+    participantSearchResultsEl.innerHTML = `<div class="participant-search-empty">Nenhum usuário encontrado para "${escapeHtml(term)}".</div>`;
+    return;
+  }
+  renderParticipantSearchResults();
+}
 
 function safeGetItem(key) {
   try {
@@ -869,15 +1039,8 @@ function loadState() {
 
 function saveState() {
   state.currentProjectId = currentProjectId;
-  state.projects.forEach((project) => {
-    Object.keys(project.columns || {}).forEach((columnId) => {
-      project.columns[columnId] = (project.columns[columnId] || []).map((card) => ({
-        ...card,
-        participants: normalizeParticipants(card.participants || [])
-      }));
-    });
-  });
   safeSetItem(STORAGE_KEY, JSON.stringify(state));
+  if (!suspendCloudSync) queueCloudSync();
 }
 
 function uid() {
@@ -907,7 +1070,7 @@ function migrateOldData() {
         owner: card.owner || "",
         date: card.date || "",
         labels: Array.isArray(card.labels) ? card.labels : [],
-        participants: Array.isArray(card.participants) ? card.participants : [],
+        participants: normalizeParticipants(Array.isArray(card.participants) ? card.participants : []),
         checklist: Array.isArray(card.checklist) ? card.checklist : [],
         comments: Array.isArray(card.comments) ? card.comments : [],
         createdAt: card.createdAt || new Date().toISOString()
@@ -1037,7 +1200,7 @@ function renderColumn(columnId, cards) {
       card.description,
       card.owner,
       ...(card.labels || []),
-      ...(card.participants || []),
+      ...normalizeParticipants(card.participants || []).map((participant) => `${participantDisplayName(participant)} ${participantEmail(participant)}`),
       ...(card.comments || []).map((c) => c.text),
       ...(card.checklist || []).map((i) => i.text)
     ].join(" ").toLowerCase();
@@ -1097,7 +1260,7 @@ function renderColumn(columnId, cards) {
     const commentsCount = (card.comments || []).length;
     const participants = normalizeParticipants(card.participants || []);
     const participantsHtml = participants.length
-      ? `<div class="card-participants">${participants.slice(0, 3).map((participant) => `<span class="participant-chip">${escapeHtml(participantLabel(participant))}</span>`).join("")}${participants.length > 3 ? `<span class="participant-chip participant-chip-more">+${participants.length - 3}</span>` : ""}</div>`
+      ? `<div class="card-participants">${participants.slice(0, 3).map((participant) => `<span class="participant-chip">${escapeHtml(participantDisplayName(participant))}</span>`).join("")}${participants.length > 3 ? `<span class="participant-chip participant-chip-more">+${participants.length - 3}</span>` : ""}</div>`
       : "";
 
     cardEl.innerHTML = `
@@ -1216,10 +1379,6 @@ function handleSaveProject() {
 
 function handleDeleteProject() {
   if (!requireAuth("excluir projetos")) return;
-  if (state.projects.length <= 1) {
-    alert("Você precisa manter pelo menos 1 projeto.");
-    return;
-  }
 
   const project = getCurrentProject();
   if (!project) return;
@@ -1228,7 +1387,7 @@ function handleDeleteProject() {
   if (!ok) return;
 
   state.projects = state.projects.filter((p) => p.id !== project.id);
-  currentProjectId = state.projects[0].id;
+  currentProjectId = state.projects[0]?.id || null;
   saveState();
   renderProjects();
   renderBoard();
@@ -1244,10 +1403,9 @@ function openCardModal(mode, columnId, cardId = null) {
   currentEditingCardId = null;
   tempChecklist = [];
   tempComments = [];
+
   tempParticipants = [];
-  if (participantSearchInput) participantSearchInput.value = "";
-  if (participantSearchResults) participantSearchResults.innerHTML = "";
-  setParticipantStatus("");
+  participantSearchResults = [];
 
   if (mode === "create") {
     cardModalTitle.textContent = "Novo Card";
@@ -1255,10 +1413,9 @@ function openCardModal(mode, columnId, cardId = null) {
 
     cardTitleInput.value = "";
     cardDescInput.value = "";
-    cardOwnerInput.value = "";
+    cardOwnerInput.value = authUser ? getUserPresentation(authUser).fullName : "";
     cardDateInput.value = "";
     cardLabelsInput.value = "";
-    tempParticipants = [];
     if (cardParticipantsInput) cardParticipantsInput.value = "";
   } else {
     const found = findCard(cardId);
@@ -1274,15 +1431,16 @@ function openCardModal(mode, columnId, cardId = null) {
     cardOwnerInput.value = found.card.owner || "";
     cardDateInput.value = found.card.date || "";
     cardLabelsInput.value = (found.card.labels || []).join(", ");
+    if (cardParticipantsInput) cardParticipantsInput.value = "";
     tempParticipants = normalizeParticipants(found.card.participants || []);
-    if (cardParticipantsInput) cardParticipantsInput.value = tempParticipants.map((item) => item.email || item.full_name).join(", ");
     tempChecklist = clone(found.card.checklist || []);
     tempComments = clone(found.card.comments || []);
   }
 
+  renderSelectedParticipants();
+  renderParticipantSearchResults();
   renderEditChecklist();
   renderEditComments();
-  renderSelectedParticipants();
   openModal(cardModalOverlay);
 
   setTimeout(() => {
@@ -1311,13 +1469,13 @@ function handleSaveCard() {
     id: currentEditingCardId || uid(),
     title,
     description: cardDescInput.value.trim(),
-    owner: cardOwnerInput.value.trim(),
+    owner: cardOwnerInput.value.trim() || (authUser ? getUserPresentation(authUser).fullName : ""),
     date: cardDateInput.value,
     labels: cardLabelsInput.value
       .split(",")
       .map((label) => label.trim())
       .filter(Boolean),
-    participants: clone(normalizeParticipants(tempParticipants)),
+    participants: clone(tempParticipants),
     checklist: clone(tempChecklist),
     comments: clone(tempComments),
     createdAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.createdAt || new Date().toISOString()) : new Date().toISOString()
@@ -1383,6 +1541,7 @@ function handleAddComment() {
   tempComments.push({
     id: uid(),
     text,
+    author: authUser ? getUserPresentation(authUser).fullName : "",
     createdAt: new Date().toISOString()
   });
 
@@ -1440,7 +1599,7 @@ function renderEditComments() {
 
     row.innerHTML = `
       <div class="edit-item-left">
-        <span>${escapeHtml(comment.text)}</span>
+        <span>${escapeHtml(comment.text)}${comment.author ? ` — ${escapeHtml(comment.author)}` : ""}</span>
       </div>
       <button class="btn btn-soft btn-sm" type="button">Remover</button>
     `;
@@ -1497,7 +1656,7 @@ function openViewCardModal(cardId) {
     participants.forEach((participant) => {
       const chip = document.createElement("span");
       chip.className = "participant-chip";
-      chip.textContent = participantLabel(participant);
+      chip.textContent = participantDisplayName(participant);
       viewCardParticipants.appendChild(chip);
     });
   } else {
@@ -1544,7 +1703,7 @@ function openViewCardModal(cardId) {
       row.innerHTML = `
         <div class="view-comment-text">${escapeHtml(comment.text)}</div>
         <div class="view-comment-meta-row">
-          <div class="view-comment-meta">${formatDateTime(comment.createdAt)}</div>
+          <div class="view-comment-meta">${comment.author ? `${escapeHtml(comment.author)} · ` : ""}${formatDateTime(comment.createdAt)}</div>
           <button type="button" class="btn btn-soft btn-sm">Remover</button>
         </div>
       `;
@@ -1581,6 +1740,7 @@ function handleViewAddComment() {
   found.card.comments.push({
     id: uid(),
     text,
+    author: authUser ? getUserPresentation(authUser).fullName : "",
     createdAt: new Date().toISOString()
   });
 

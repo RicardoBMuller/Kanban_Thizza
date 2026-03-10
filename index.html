@@ -234,16 +234,14 @@
         </div>
 
         <div class="field">
-          <label class="field-label" for="participantSearchInput">Participantes</label>
-          <div class="inline-add participant-search-row">
-            <input id="participantSearchInput" class="input" type="text" placeholder="Digite o nome ou email do participante" />
-            <button id="participantSearchBtn" class="btn btn-soft" type="button">Check name</button>
+          <label class="field-label" for="cardParticipantsInput">Participantes</label>
+          <div class="inline-add participant-search-inline">
+            <input id="cardParticipantsInput" class="input" type="text" placeholder="Digite nome ou e-mail do participante" />
+            <button id="cardCheckParticipantBtn" class="btn btn-soft" type="button">Check name</button>
           </div>
-          <small class="helper">Busca na base de usuários do Supabase e adiciona ao card se o cadastro existir.</small>
-          <div id="participantSearchStatus" class="helper helper-feedback hidden"></div>
+          <small class="helper">Busque um usuário já cadastrado e adicione-o ao card.</small>
           <div id="participantSearchResults" class="participant-search-results"></div>
-          <div id="selectedParticipantsList" class="participants-list selected-participants-list"></div>
-          <input id="cardParticipantsInput" type="hidden" />
+          <div id="selectedParticipantsList" class="selected-participants-list"></div>
         </div>
 
         <div class="field">
@@ -404,20 +402,18 @@
 
         <div class="field">
           <label class="field-label" for="profileSectorInput">Setor</label>
-          <input id="profileSectorInput" class="input" type="text" placeholder="Ex.: TI, RH, Comercial" />
+          <input id="profileSectorInput" class="input" type="text" placeholder="Ex.: TI, Marketing, Financeiro" />
         </div>
 
         <div class="field">
           <label class="field-label" for="profileBioInput">Bio</label>
-          <textarea id="profileBioInput" class="textarea" placeholder="Descreva brevemente sua função ou contexto"></textarea>
+          <textarea id="profileBioInput" class="textarea" placeholder="Fale um pouco sobre você"></textarea>
         </div>
-
-        <p id="profileSaveStatus" class="helper helper-feedback hidden"></p>
       </div>
 
       <div class="modal-footer">
-        <button id="closeProfileFooterBtn" class="btn btn-soft" type="button">Fechar</button>
-        <button id="saveProfileBtn" class="btn btn-primary" type="button">Salvar perfil</button>
+        <button id="saveProfileBtn" class="btn btn-soft" type="button">Salvar perfil</button>
+        <button id="closeProfileFooterBtn" class="btn btn-primary" type="button">Fechar</button>
       </div>
     </div>
   </div>
