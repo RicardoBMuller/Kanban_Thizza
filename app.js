@@ -489,7 +489,7 @@ function fillProfileForm() {
   profileBioInput.value = profileRecord?.bio || "";
 }
 
-// CORREÇÃO PERFIL: Feedback interno e reset do botão para permitir edições sucessivas
+// CORREÇÃO PERFIL: Feedback interno e reabilitação do botão para múltiplas alterações seguidas
 async function handleSaveProfile() {
   if (!requireAuth("salvar o perfil")) return;
   if (!supabase || !authUser) return;
@@ -505,7 +505,6 @@ async function handleSaveProfile() {
     bio: profileBioInput?.value.trim() || null
   };
 
-  // Feedback de carregamento
   const originalText = saveProfileBtn.textContent;
   saveProfileBtn.disabled = true;
   saveProfileBtn.textContent = "Salvando...";
@@ -522,23 +521,21 @@ async function handleSaveProfile() {
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual dentro do próprio modal
   saveProfileBtn.textContent = "✅ Salvo!";
-  
   setTimeout(() => {
     saveProfileBtn.textContent = originalText;
-    saveProfileBtn.disabled = false; // Reabilita para nova edição
+    saveProfileBtn.disabled = false;
   }, 2200);
 }
 
-// CORREÇÃO LOGOUT: Garantia de SignOut real e fadeout de despedida completo
+// CORREÇÃO LOGOUT: Garantia de SignOut atômico e redirecionamento limpo para trocar de conta
 function showSystemConfirmModal(title, message, onConfirm) {
   projectModalTitle.textContent = title;
   const modalBody = projectModalOverlay.querySelector(".modal-body");
   const originalContent = modalBody.innerHTML;
   modalBody.innerHTML = `<p class="view-text">${message}</p>`;
   
-  // Substituição por clones para limpar listeners de validação de projeto
+  // Substituição agressiva para limpar eventos de validação de projetos
   const newSaveBtn = saveProjectBtn.cloneNode(true);
   const newCancelBtn = cancelProjectBtn.cloneNode(true);
   saveProjectBtn.parentNode.replaceChild(newSaveBtn, saveProjectBtn);
@@ -564,26 +561,26 @@ async function handleLogout() {
   
   showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
     try {
-      const { fullName, avatarUrl } = getUserPresentation(authUser);
+      const presentation = getUserPresentation(authUser);
       
-      // 1. Invalidar token no Supabase primeiro
+      // 1. Invalidar token no Supabase (Mata a sessão no servidor)
       await supabase.auth.signOut();
       
-      // 2. Limpar estados de memória locais instantaneamente
+      // 2. Limpeza local total
       authUser = null;
       profileRecord = null;
       clearDataForSignedOutUser();
       closeProfileModal();
       
-      // 3. Gatilho visual de despedida
-      showGoodbyeSplash(fullName, avatarUrl);
+      // 3. UI de Despedida
+      showGoodbyeSplash(presentation.fullName, presentation.avatarUrl);
       
-      // 4. Redirecionamento completo para limpar a sessão no browser
+      // 4. Redirecionamento completo para limpar o estado e permitir novo login
       setTimeout(() => {
         window.location.href = window.location.origin + window.location.pathname;
       }, 3200);
     } catch (e) {
-      console.error("Erro no fluxo de logout:", e);
+      console.error("Falha no logout:", e);
       window.location.reload();
     }
   });
@@ -609,8 +606,6 @@ function showGoodbyeSplash(fullName, avatarUrl) {
     </div>`;
     
   document.body.appendChild(splash);
-  
-  // Fadeout antes do refresh final
   setTimeout(() => splash.classList.add("is-hidden"), 2400);
 }
 
@@ -2093,7 +2088,6 @@ async function handleSaveProfile() {
     bio: profileBioInput?.value.trim() || null
   };
 
-  // Feedback de carregamento
   const originalText = saveProfileBtn.textContent;
   saveProfileBtn.disabled = true;
   saveProfileBtn.textContent = "Salvando...";
@@ -2110,12 +2104,10 @@ async function handleSaveProfile() {
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual dentro do próprio modal
   saveProfileBtn.textContent = "✅ Salvo!";
-  
   setTimeout(() => {
     saveProfileBtn.textContent = originalText;
-    saveProfileBtn.disabled = false; // Reabilita para nova edição
+    saveProfileBtn.disabled = false;
   }, 2200);
 }
 
@@ -2126,7 +2118,6 @@ function showSystemConfirmModal(title, message, onConfirm) {
   const originalContent = modalBody.innerHTML;
   modalBody.innerHTML = `<p class="view-text">${message}</p>`;
   
-  // Substituição por clones para limpar listeners de validação de projeto
   const newSaveBtn = saveProjectBtn.cloneNode(true);
   const newCancelBtn = cancelProjectBtn.cloneNode(true);
   saveProjectBtn.parentNode.replaceChild(newSaveBtn, saveProjectBtn);
@@ -2141,7 +2132,6 @@ function showSystemConfirmModal(title, message, onConfirm) {
 
   newSaveBtn.textContent = "Sim";
   newCancelBtn.textContent = "Não";
-  
   newSaveBtn.onclick = () => { onConfirm(); restore(); };
   newCancelBtn.onclick = restore;
   openModal(projectModalOverlay);
@@ -2197,8 +2187,6 @@ function showGoodbyeSplash(fullName, avatarUrl) {
     </div>`;
     
   document.body.appendChild(splash);
-  
-  // Fadeout antes do refresh final
   setTimeout(() => splash.classList.add("is-hidden"), 2400);
 }
 
@@ -2556,4 +2544,1223 @@ async function handleGoogleLogin() {
     alert("Não foi possível iniciar o login com Google.");
   }
 }
+
+function participantDisplayName(participant) {
+  if (!participant) return "";
+  return participant.full_name || participant.name || participant.email || String(participant);
+}
+
+function participantEmail(participant) {
+  if (!participant || typeof participant === "string") return "";
+  return participant.email || "";
+}
+
+function normalizeParticipant(participant) {
+  if (!participant) return null;
+  if (typeof participant === "string") return { user_id: null, full_name: participant, email: "", avatar_url: "" };
+  return {
+    user_id: participant.user_id || participant.id || null,
+    full_name: participant.full_name || participant.name || participant.email || "Participante",
+    email: participant.email || "",
+    avatar_url: participant.avatar_url || participant.picture || ""
+  };
+}
+
+function normalizeParticipants(participants) {
+  return (Array.isArray(participants) ? participants : []).map(normalizeParticipant).filter(Boolean);
+}
+
+function renderSelectedParticipants() {
+  if (!selectedParticipantsList) return;
+  selectedParticipantsList.innerHTML = "";
+  if (!tempParticipants.length) {
+    selectedParticipantsList.innerHTML = `<div class="participant-search-empty">Nenhum participante selecionado.</div>`;
+    return;
+  }
+
+  tempParticipants.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "selected-participant-item";
+    const initials = getInitials(participantDisplayName(participant));
+    row.innerHTML = `
+      <div class="selected-participant-main">
+        ${participant.avatar_url ? `<img class="selected-participant-avatar" src="${escapeHtml(participant.avatar_url)}" alt="${escapeHtml(participantDisplayName(participant))}">` : `<div class="selected-participant-avatar">${escapeHtml(initials)}</div>`}
+        <div class="selected-participant-copy">
+          <strong>${escapeHtml(participantDisplayName(participant))}</strong>
+          <span>${escapeHtml(participantEmail(participant) || "Participante adicionado")}</span>
+        </div>
+      </div>
+      <button class="btn btn-soft btn-sm" type="button">Remover</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => removeParticipantFromTemp(participant.user_id || participant.email || participantDisplayName(participant)));
+    selectedParticipantsList.appendChild(row);
+  });
+}
+
+function renderParticipantSearchResults() {
+  if (!participantSearchResultsEl) return;
+  participantSearchResultsEl.innerHTML = "";
+  if (!participantSearchResults.length) return;
+
+  participantSearchResults.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "participant-result-item";
+    const initials = getInitials(participantDisplayName(participant));
+    row.innerHTML = `
+      <div class="participant-result-main">
+        ${participant.avatar_url ? `<img class="participant-result-avatar" src="${escapeHtml(participant.avatar_url)}" alt="${escapeHtml(participantDisplayName(participant))}">` : `<div class="participant-result-avatar">${escapeHtml(initials)}</div>`}
+        <div class="participant-result-copy">
+          <strong>${escapeHtml(participantDisplayName(participant))}</strong>
+          <span>${escapeHtml(participantEmail(participant) || "Usuário cadastrado")}</span>
+        </div>
+      </div>
+      <button class="btn btn-soft btn-sm" type="button">Adicionar</button>
+    `;
+    row.querySelector("button").addEventListener("click", () => addParticipantToTemp(participant));
+    participantSearchResultsEl.appendChild(row);
+  });
+}
+
+function addParticipantToTemp(participant) {
+  const normalized = normalizeParticipant(participant);
+  const key = normalized.user_id || normalized.email || participantDisplayName(normalized);
+  const exists = tempParticipants.some((item) => (item.user_id || item.email || participantDisplayName(item)) === key);
+  if (exists) return;
+  tempParticipants.push(normalized);
+  renderSelectedParticipants();
+}
+
+function removeParticipantFromTemp(key) {
+  tempParticipants = tempParticipants.filter((item) => (item.user_id || item.email || participantDisplayName(item)) !== key);
+  renderSelectedParticipants();
+}
+
+async function handleCheckParticipant() {
+  if (!requireAuth("buscar participantes")) return;
+  const term = cardParticipantsInput?.value.trim();
+  if (!term) {
+    participantSearchResults = [];
+    renderParticipantSearchResults();
+    return;
+  }
+  if (!supabase) {
+    alert("Configure o Supabase para buscar participantes.");
+    return;
+  }
+
+  let data = null;
+  const rpcResult = await supabase.rpc("search_profiles", { search_term: term });
+  if (!rpcResult.error) {
+    data = rpcResult.data;
+  } else {
+    const fallback = await supabase
+      .from("profiles")
+      .select("user_id, full_name, email, avatar_url")
+      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
+      .limit(8);
+    if (fallback.error) {
+      console.error("Erro ao buscar participantes:", fallback.error);
+      alert("Não foi possível buscar participantes.");
+      return;
+    }
+    data = fallback.data;
+  }
+
+  participantSearchResults = normalizeParticipants(data || []).filter((participant) => participant.user_id !== authUser.id);
+  if (!participantSearchResults.length) {
+    participantSearchResultsEl.innerHTML = `<div class="participant-search-empty">Nenhum usuário encontrado para "${escapeHtml(term)}".</div>`;
+    return;
+  }
+  renderParticipantSearchResults();
+}
+
+function safeGetItem(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+function loadState() {
+  try {
+    const saved = safeGetItem(STORAGE_KEY);
+    if (!saved) {
+      return { currentProjectId: null, projects: [] };
+    }
+    return JSON.parse(saved);
+  } catch {
+    return { currentProjectId: null, projects: [] };
+  }
+}
+
+function saveState() {
+  state.currentProjectId = currentProjectId;
+  safeSetItem(STORAGE_KEY, JSON.stringify(state));
+  if (!suspendCloudSync) queueCloudSync();
+}
+
+function uid() {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function createProject(name) {
+  return {
+    id: uid(),
+    name: name.trim(),
+    createdAt: new Date().toISOString(),
+    columns: defaultColumns()
+  };
+}
+
+function getCurrentProject() {
+  return state.projects.find((project) => project.id === currentProjectId);
+}
+
+function migrateOldData() {
+  state.projects.forEach((project) => {
+    Object.keys(project.columns).forEach((columnId) => {
+      project.columns[columnId] = project.columns[columnId].map((card) => ({
+        id: card.id || uid(),
+        title: card.title || "Sem título",
+        description: card.description || "",
+        owner: card.owner || "",
+        date: card.date || "",
+        labels: Array.isArray(card.labels) ? card.labels : [],
+        participants: normalizeParticipants(Array.isArray(card.participants) ? card.participants : []),
+        checklist: Array.isArray(card.checklist) ? card.checklist : [],
+        comments: Array.isArray(card.comments) ? card.comments : [],
+        createdAt: card.createdAt || new Date().toISOString()
+      }));
+    });
+  });
+  saveState();
+}
+
+function renderProjects() {
+  projectList.innerHTML = "";
+
+  if (!authUser) {
+    const empty = document.createElement("li");
+    empty.className = "project-empty-state";
+    empty.textContent = "Faça login para ver e criar projetos.";
+    projectList.appendChild(empty);
+    return;
+  }
+
+  if (!state.projects.length) {
+    const empty = document.createElement("li");
+    empty.className = "project-empty-state";
+    empty.textContent = authUser ? "Nenhum projeto criado ainda." : "Faça login para criar projetos.";
+    projectList.appendChild(empty);
+    return;
+  }
+
+  state.projects.forEach((project) => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <span class="project-item-name">${escapeHtml(project.name)}</span>
+      <button class="project-edit-btn" type="button" aria-label="Editar projeto" title="Editar projeto">⋯</button>
+    `;
+
+    if (project.id === currentProjectId) {
+      li.classList.add("active");
+    }
+
+    li.addEventListener("click", () => {
+      currentProjectId = project.id;
+      saveState();
+      renderProjects();
+      renderBoard();
+      closeProjectActionsMenu();
+    });
+
+    const editBtn = li.querySelector(".project-edit-btn");
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      currentProjectId = project.id;
+      saveState();
+      renderProjects();
+      renderBoard();
+      toggleProjectActionsMenu(editBtn);
+    });
+
+    projectList.appendChild(li);
+  });
+}
+
+function toggleProjectActionsMenu(anchorEl) {
+  if (projectActionsOpen) {
+    closeProjectActionsMenu();
+  }
+
+  const rect = anchorEl.getBoundingClientRect();
+  projectActionsMenu.style.top = `${rect.bottom + 10}px`;
+  projectActionsMenu.style.left = `${Math.max(16, rect.right - 220)}px`;
+  projectActionsMenu.classList.remove("hidden");
+  projectActionsMenu.setAttribute("aria-hidden", "false");
+  projectActionsOpen = true;
+}
+
+function closeProjectActionsMenu() {
+  projectActionsMenu.classList.add("hidden");
+  projectActionsMenu.setAttribute("aria-hidden", "true");
+  projectActionsOpen = false;
+}
+
+function renderBoard() {
+  const project = authUser ? getCurrentProject() : null;
+
+  if (!project) {
+    boardTitle.textContent = authUser ? "Nenhum projeto" : "Faça login para começar";
+    projectCount.textContent = authUser ? "0 projeto(s) no total" : "Entre com Google para criar seu primeiro projeto";
+
+    renderColumn("todo", []);
+    renderColumn("doing", []);
+    renderColumn("done", []);
+
+    countTodo.textContent = 0;
+    countDoing.textContent = 0;
+    countDone.textContent = 0;
+
+    updateDashboard({ columns: defaultColumns() });
+    updateCreationAccess();
+    return;
+  }
+
+  boardTitle.textContent = project.name;
+  projectCount.textContent = `${state.projects.length} projeto(s) no total`;
+
+  renderColumn("todo", project.columns.todo);
+  renderColumn("doing", project.columns.doing);
+  renderColumn("done", project.columns.done);
+
+  countTodo.textContent = project.columns.todo.length;
+  countDoing.textContent = project.columns.doing.length;
+  countDone.textContent = project.columns.done.length;
+
+  updateDashboard(project);
+  updateCreationAccess();
+}
+
+function renderColumn(columnId, cards) {
+  const container = document.querySelector(`.column[data-col="${columnId}"] .cards`);
+  container.innerHTML = "";
+
+  const query = searchInput.value.trim().toLowerCase();
+
+  const filtered = cards.filter((card) => {
+    if (!query) return true;
+
+    const searchText = [
+      card.title,
+      card.description,
+      card.owner,
+      ...(card.labels || []),
+      ...normalizeParticipants(card.participants || []).map((participant) => `${participantDisplayName(participant)} ${participantEmail(participant)}`),
+      ...(card.comments || []).map((c) => c.text),
+      ...(card.checklist || []).map((i) => i.text)
+    ].join(" ").toLowerCase();
+
+    return searchText.includes(query);
+  });
+
+  if (!filtered.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = query ? "Nenhum card encontrado." : "Nenhum card nesta coluna.";
+    container.appendChild(empty);
+    return;
+  }
+
+  filtered.forEach((card) => {
+    const cardEl = document.createElement("article");
+    cardEl.className = "card";
+    cardEl.draggable = true;
+    cardEl.dataset.cardId = card.id;
+
+    const labelsHtml = (card.labels || [])
+      .filter(Boolean)
+      .map((label) => `<span class="label">${escapeHtml(label)}</span>`)
+      .join("");
+
+    const meta = [];
+    if (card.owner) meta.push(`<span class="meta-chip">👤 ${escapeHtml(card.owner)}</span>`);
+    if (card.date) meta.push(`<span class="meta-chip">Prazo: ${formatDate(card.date)}</span>`);
+
+    const checklist = card.checklist || [];
+    const doneItems = checklist.filter((item) => item.done).length;
+    const checklistPercent = checklist.length ? Math.round((doneItems / checklist.length) * 100) : 0;
+
+    const checklistPreviewHtml = checklist.length
+      ? `
+        <div class="card-checklist">
+          <div class="card-checklist-title">
+            <span>Checklist</span>
+            <span>${doneItems}/${checklist.length}</span>
+          </div>
+          <div class="card-checklist-items">
+            ${checklist.slice(0, 3).map((item) => `
+              <div class="card-check-item ${item.done ? "done" : ""}">
+                <span class="card-check-bullet"></span>
+                <span>${escapeHtml(item.text)}</span>
+              </div>
+            `).join("")}
+          </div>
+          <div class="card-progress">
+            <div class="card-progress-fill" style="width:${checklistPercent}%"></div>
+          </div>
+        </div>
+      `
+      : "";
+
+    const commentsCount = (card.comments || []).length;
+    const participants = normalizeParticipants(card.participants || []);
+    const participantsHtml = participants.length
+      ? `<div class="card-participants">${participants.slice(0, 3).map((participant) => `<span class="participant-chip">${escapeHtml(participantDisplayName(participant))}</span>`).join("")}${participants.length > 3 ? `<span class="participant-chip participant-chip-more">+${participants.length - 3}</span>` : ""}</div>`
+      : "";
+
+    cardEl.innerHTML = `
+      <h4 class="card-title">${escapeHtml(card.title || "Sem título")}</h4>
+      <p class="card-desc">${escapeHtml(truncate(card.description || "Sem descrição.", 140))}</p>
+      ${labelsHtml ? `<div class="card-labels">${labelsHtml}</div>` : ""}
+      ${meta.length ? `<div class="card-meta">${meta.join("")}</div>` : ""}
+      ${checklistPreviewHtml}
+      ${participantsHtml}
+      <div class="card-comments-row">
+        <span class="card-comments-info">💬 ${commentsCount} comentário(s)</span>
+        <div class="card-actions">
+          <button class="btn btn-soft btn-sm edit-card-btn" type="button">Editar</button>
+        </div>
+      </div>
+    `;
+
+    cardEl.addEventListener("click", (e) => {
+      const clickedEditButton = e.target.closest(".edit-card-btn");
+      if (clickedEditButton) return;
+      openViewCardModal(card.id);
+    });
+
+    const editBtn = cardEl.querySelector(".edit-card-btn");
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openCardModal("edit", columnId, card.id);
+    });
+
+    cardEl.addEventListener("dragstart", (e) => {
+      cardEl.classList.add("dragging");
+      e.dataTransfer.setData("text/plain", card.id);
+      e.dataTransfer.effectAllowed = "move";
+    });
+
+    cardEl.addEventListener("dragend", () => {
+      cardEl.classList.remove("dragging");
+      document.querySelectorAll(".cards").forEach((el) => el.classList.remove("drag-over"));
+    });
+
+    container.appendChild(cardEl);
+  });
+}
+
+function openProjectModal(mode) {
+  if (!requireAuth(mode === "create" ? "criar projetos" : "editar projetos")) return;
+  projectModalMode = mode;
+
+  if (mode === "create") {
+    projectModalTitle.textContent = "Novo Projeto";
+    projectNameInput.value = "";
+  } else {
+    const project = getCurrentProject();
+    if (!project) return;
+    projectModalTitle.textContent = "Renomear Projeto";
+    projectNameInput.value = project.name;
+  }
+
+  openModal(projectModalOverlay);
+
+  setTimeout(() => {
+    projectNameInput.focus();
+    projectNameInput.select();
+  }, 90);
+}
+
+function closeProjectModal() {
+  closeModal(projectModalOverlay);
+}
+
+function handleSaveProject() {
+  if (!requireAuth("salvar projetos")) return;
+  const name = projectNameInput.value.trim();
+  if (!name) {
+    alert("Digite um nome para o projeto.");
+    projectNameInput.focus();
+    return;
+  }
+
+  if (projectModalMode === "create") {
+    const exists = state.projects.some(
+      (project) => project.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (exists) {
+      alert("Já existe um projeto com esse nome.");
+      return;
+    }
+
+    const newProject = createProject(name);
+    state.projects.push(newProject);
+    currentProjectId = newProject.id;
+  } else {
+    const currentProject = getCurrentProject();
+    if (!currentProject) return;
+
+    const exists = state.projects.some(
+      (project) =>
+        project.id !== currentProject.id &&
+        project.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (exists) {
+      alert("Já existe outro projeto com esse nome.");
+      return;
+    }
+
+    currentProject.name = name;
+  }
+
+  saveState();
+  renderProjects();
+  renderBoard();
+  closeProjectModal();
+}
+
+function handleDeleteProject() {
+  if (!requireAuth("excluir projetos")) return;
+
+  const project = getCurrentProject();
+  if (!project) return;
+
+  const ok = confirm(`Deseja excluir o projeto "${project.name}"?`);
+  if (!ok) return;
+
+  state.projects = state.projects.filter((p) => p.id !== project.id);
+  currentProjectId = state.projects[0]?.id || null;
+  saveState();
+  renderProjects();
+  renderBoard();
+}
+
+function openCardModal(mode, columnId, cardId = null) {
+  if (!requireAuth(mode === "create" ? "criar cards" : "editar cards")) return;
+  if (!getCurrentProject()) {
+    alert("Crie um projeto antes de adicionar cards.");
+    return;
+  }
+  currentTargetColumn = columnId;
+  currentEditingCardId = null;
+  tempChecklist = [];
+  tempComments = [];
+
+  tempParticipants = [];
+  participantSearchResults = [];
+
+  if (mode === "create") {
+    cardModalTitle.textContent = "Novo Card";
+    deleteCardBtn.classList.add("hidden");
+
+    cardTitleInput.value = "";
+    cardDescInput.value = "";
+    cardOwnerInput.value = authUser ? getUserPresentation(authUser).fullName : "";
+    cardDateInput.value = "";
+    cardLabelsInput.value = "";
+    if (cardParticipantsInput) cardParticipantsInput.value = "";
+  } else {
+    const found = findCard(cardId);
+    if (!found) return;
+
+    currentEditingCardId = cardId;
+    currentTargetColumn = found.columnId;
+    deleteCardBtn.classList.remove("hidden");
+    cardModalTitle.textContent = "Editar Card";
+
+    cardTitleInput.value = found.card.title || "";
+    cardDescInput.value = found.card.description || "";
+    cardOwnerInput.value = found.card.owner || "";
+    cardDateInput.value = found.card.date || "";
+    cardLabelsInput.value = (found.card.labels || []).join(", ");
+    if (cardParticipantsInput) cardParticipantsInput.value = "";
+    tempParticipants = normalizeParticipants(found.card.participants || []);
+    tempChecklist = clone(found.card.checklist || []);
+    tempComments = clone(found.card.comments || []);
+  }
+
+  renderSelectedParticipants();
+  renderParticipantSearchResults();
+  renderEditChecklist();
+  renderEditComments();
+  openModal(cardModalOverlay);
+
+  setTimeout(() => {
+    cardTitleInput.focus();
+    cardTitleInput.select();
+  }, 90);
+}
+
+function closeCardModal() {
+  closeModal(cardModalOverlay);
+}
+
+function handleSaveCard() {
+  if (!requireAuth("salvar cards")) return;
+  const title = cardTitleInput.value.trim();
+  if (!title) {
+    alert("Digite um título para o card.");
+    cardTitleInput.focus();
+    return;
+  }
+
+  const project = getCurrentProject();
+  if (!project) return;
+
+  const cardData = {
+    id: currentEditingCardId || uid(),
+    title,
+    description: cardDescInput.value.trim(),
+    owner: cardOwnerInput.value.trim() || (authUser ? getUserPresentation(authUser).fullName : ""),
+    date: cardDateInput.value,
+    labels: cardLabelsInput.value
+      .split(",")
+      .map((label) => label.trim())
+      .filter(Boolean),
+    participants: clone(tempParticipants),
+    checklist: clone(tempChecklist),
+    comments: clone(tempComments),
+    createdAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.createdAt || new Date().toISOString()) : new Date().toISOString()
+  };
+
+  if (currentEditingCardId) {
+    const found = findCard(currentEditingCardId);
+    if (!found) return;
+
+    project.columns[found.columnId] = project.columns[found.columnId].filter(
+      (card) => card.id !== currentEditingCardId
+    );
+    project.columns[currentTargetColumn].push(cardData);
+  } else {
+    project.columns[currentTargetColumn].push(cardData);
+  }
+
+  saveState();
+  renderBoard();
+  closeCardModal();
+}
+
+function handleDeleteCard() {
+  if (!requireAuth("excluir cards")) return;
+  if (!currentEditingCardId) return;
+
+  const ok = confirm("Deseja excluir este card?");
+  if (!ok) return;
+
+  const project = getCurrentProject();
+  if (!project) return;
+
+  const found = findCard(currentEditingCardId);
+  if (!found) return;
+
+  project.columns[found.columnId] = project.columns[found.columnId].filter(
+    (card) => card.id !== currentEditingCardId
+  );
+
+  saveState();
+  renderBoard();
+  closeCardModal();
+}
+
+function handleAddChecklistItem() {
+  const text = newChecklistItemInput.value.trim();
+  if (!text) return;
+
+  tempChecklist.push({
+    id: uid(),
+    text,
+    done: false
+  });
+
+  newChecklistItemInput.value = "";
+  renderEditChecklist();
+}
+
+function handleAddComment() {
+  const text = newCommentInput.value.trim();
+  if (!text) return;
+
+  tempComments.push({
+    id: uid(),
+    text,
+    author: authUser ? getUserPresentation(authUser).fullName : "",
+    createdAt: new Date().toISOString()
+  });
+
+  newCommentInput.value = "";
+  renderEditComments();
+}
+
+function renderEditChecklist() {
+  editChecklistList.innerHTML = "";
+
+  if (!tempChecklist.length) {
+    editChecklistList.innerHTML = `<div class="empty-state">Nenhum item no checklist.</div>`;
+    return;
+  }
+
+  tempChecklist.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "edit-item";
+
+    row.innerHTML = `
+      <div class="edit-item-left">
+        <input type="checkbox" ${item.done ? "checked" : ""} />
+        <span>${escapeHtml(item.text)}</span>
+      </div>
+      <button class="btn btn-soft btn-sm" type="button">Remover</button>
+    `;
+
+    const checkbox = row.querySelector('input[type="checkbox"]');
+    const removeBtn = row.querySelector("button");
+
+    checkbox.addEventListener("change", () => {
+      item.done = checkbox.checked;
+    });
+
+    removeBtn.addEventListener("click", () => {
+      tempChecklist = tempChecklist.filter((check) => check.id !== item.id);
+      renderEditChecklist();
+    });
+
+    editChecklistList.appendChild(row);
+  });
+}
+
+function renderEditComments() {
+  editCommentsList.innerHTML = "";
+
+  if (!tempComments.length) {
+    editCommentsList.innerHTML = `<div class="empty-state">Nenhum comentário.</div>`;
+    return;
+  }
+
+  tempComments.forEach((comment) => {
+    const row = document.createElement("div");
+    row.className = "edit-item";
+
+    row.innerHTML = `
+      <div class="edit-item-left">
+        <span>${escapeHtml(comment.text)}${comment.author ? ` — ${escapeHtml(comment.author)}` : ""}</span>
+      </div>
+      <button class="btn btn-soft btn-sm" type="button">Remover</button>
+    `;
+
+    row.querySelector("button").addEventListener("click", () => {
+      tempComments = tempComments.filter((c) => c.id !== comment.id);
+      renderEditComments();
+    });
+
+    editCommentsList.appendChild(row);
+  });
+}
+
+function openViewCardModal(cardId) {
+  const found = findCard(cardId);
+  if (!found) return;
+
+  const { card, columnId } = found;
+
+  viewCardTitle.textContent = card.title || "Sem título";
+  viewCardDescription.textContent = card.description || "Sem descrição.";
+  viewCardColumn.textContent = `Coluna: ${columnLabel(columnId)}`;
+
+  if (card.owner) {
+    viewCardOwner.textContent = `👤 ${card.owner}`;
+    viewCardOwner.classList.remove("hidden");
+  } else {
+    viewCardOwner.classList.add("hidden");
+  }
+
+  if (card.date) {
+    viewCardDate.textContent = `Prazo: ${formatDate(card.date)}`;
+    viewCardDate.classList.remove("hidden");
+  } else {
+    viewCardDate.classList.add("hidden");
+  }
+
+  viewCardLabels.innerHTML = "";
+  if ((card.labels || []).length) {
+    card.labels.forEach((label) => {
+      const span = document.createElement("span");
+      span.className = "label";
+      span.textContent = label;
+      viewCardLabels.appendChild(span);
+    });
+  } else {
+    viewCardLabels.innerHTML = `<div class="empty-state">Nenhuma label.</div>`;
+  }
+
+  const participants = normalizeParticipants(card.participants || []);
+  viewParticipantsCounter.textContent = `${participants.length}`;
+  viewCardParticipants.innerHTML = "";
+  if (participants.length) {
+    participants.forEach((participant) => {
+      const chip = document.createElement("span");
+      chip.className = "participant-chip";
+      chip.textContent = participantDisplayName(participant);
+      viewCardParticipants.appendChild(chip);
+    });
+  } else {
+    viewCardParticipants.innerHTML = `<div class="empty-state">Nenhum participante.</div>`;
+  }
+
+  const checklist = card.checklist || [];
+  const doneItems = checklist.filter((item) => item.done).length;
+  const percent = checklist.length ? Math.round((doneItems / checklist.length) * 100) : 0;
+
+  viewChecklistCounter.textContent = `${doneItems}/${checklist.length}`;
+  viewChecklistProgress.style.width = `${percent}%`;
+  viewChecklistList.innerHTML = "";
+
+  if (checklist.length) {
+    checklist.forEach((item) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = `view-check-item is-clickable ${item.done ? "done" : ""}`;
+      row.innerHTML = `
+        <span class="view-check-bullet"></span>
+        <span>${escapeHtml(item.text)}</span>
+      `;
+      row.addEventListener("click", () => {
+        item.done = !item.done;
+        saveState();
+        openViewCardModal(card.id);
+        renderBoard();
+      });
+      viewChecklistList.appendChild(row);
+    });
+  } else {
+    viewChecklistList.innerHTML = `<div class="empty-state">Nenhum item no checklist.</div>`;
+  }
+
+  const comments = card.comments || [];
+  viewCommentsCounter.textContent = `${comments.length}`;
+  viewCommentsList.innerHTML = "";
+
+  if (comments.length) {
+    comments.forEach((comment) => {
+      const row = document.createElement("div");
+      row.className = "view-comment-item";
+      row.innerHTML = `
+        <div class="view-comment-text">${escapeHtml(comment.text)}</div>
+        <div class="view-comment-meta-row">
+          <div class="view-comment-meta">${comment.author ? `${escapeHtml(comment.author)} · ` : ""}${formatDateTime(comment.createdAt)}</div>
+          <button type="button" class="btn btn-soft btn-sm">Remover</button>
+        </div>
+      `;
+      row.querySelector("button").addEventListener("click", () => {
+        card.comments = (card.comments || []).filter((c) => c.id !== comment.id);
+        saveState();
+        openViewCardModal(card.id);
+        renderBoard();
+      });
+      viewCommentsList.appendChild(row);
+    });
+  } else {
+    viewCommentsList.innerHTML = `<div class="empty-state">Nenhum comentário.</div>`;
+  }
+
+  viewEditCardBtn.dataset.cardId = card.id;
+  openModal(viewCardModalOverlay);
+}
+
+function closeViewCardModal() {
+  viewNewCommentInput.value = "";
+  closeModal(viewCardModalOverlay);
+}
+
+function handleViewAddComment() {
+  const cardId = viewEditCardBtn.dataset.cardId;
+  const text = viewNewCommentInput.value.trim();
+  if (!cardId || !text) return;
+
+  const found = findCard(cardId);
+  if (!found) return;
+
+  if (!Array.isArray(found.card.comments)) found.card.comments = [];
+  found.card.comments.push({
+    id: uid(),
+    text,
+    author: authUser ? getUserPresentation(authUser).fullName : "",
+    createdAt: new Date().toISOString()
+  });
+
+  viewNewCommentInput.value = "";
+  saveState();
+  openViewCardModal(cardId);
+  renderBoard();
+}
+
+function findCard(cardId) {
+  const project = getCurrentProject();
+  if (!project) return null;
+
+  for (const columnId of Object.keys(project.columns)) {
+    const card = project.columns[columnId].find((item) => item.id === cardId);
+    if (card) {
+      return { card, columnId };
+    }
+  }
+
+  return null;
+}
+
+function moveCardToColumnAtPosition(cardId, targetColumnId, targetContainer) {
+  const project = getCurrentProject();
+  if (!project) return;
+
+  let draggedCard = null;
+
+  for (const columnId of Object.keys(project.columns)) {
+    const index = project.columns[columnId].findIndex((card) => card.id === cardId);
+    if (index !== -1) {
+      draggedCard = project.columns[columnId].splice(index, 1)[0];
+      break;
+    }
+  }
+
+  if (!draggedCard) return;
+
+  const orderedIds = [...targetContainer.querySelectorAll(".card")]
+    .map((el) => el.dataset.cardId)
+    .filter(Boolean);
+
+  const insertIndex = orderedIds.indexOf(cardId);
+
+  if (insertIndex === -1) {
+    project.columns[targetColumnId].push(draggedCard);
+  } else {
+    project.columns[targetColumnId].splice(insertIndex, 0, draggedCard);
+  }
+
+  saveState();
+  renderBoard();
+}
+
+function getDragAfterElement(container, mouseY) {
+  const draggableCards = [...container.querySelectorAll(".card:not(.dragging)")];
+
+  return draggableCards.reduce(
+    (closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = mouseY - box.top - box.height / 2;
+
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, element: child };
+      }
+
+      return closest;
+    },
+    { offset: Number.NEGATIVE_INFINITY, element: null }
+  ).element;
+}
+
+function openModal(overlay) {
+  if (!overlay) return;
+
+  const activeTimer = modalCloseTimers.get(overlay);
+  if (activeTimer) {
+    clearTimeout(activeTimer);
+    modalCloseTimers.delete(overlay);
+  }
+
+  overlay.classList.remove("hidden", "is-closing");
+  overlay.setAttribute("aria-hidden", "false");
+
+  requestAnimationFrame(() => {
+    overlay.classList.add("is-active");
+  });
+}
+
+function closeModal(overlay) {
+  if (!overlay || overlay.classList.contains("hidden")) return;
+
+  overlay.classList.remove("is-active");
+  overlay.classList.add("is-closing");
+  overlay.setAttribute("aria-hidden", "true");
+
+  const timer = setTimeout(() => {
+    overlay.classList.remove("is-closing");
+    overlay.classList.add("hidden");
+    modalCloseTimers.delete(overlay);
+  }, 280);
+
+  modalCloseTimers.set(overlay, timer);
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  safeSetItem(THEME_KEY, theme);
+  updateThemeButtons(theme);
+}
+
+function applySavedTheme() {
+  const savedTheme = safeGetItem(THEME_KEY) || "dark";
+  document.documentElement.setAttribute("data-theme", savedTheme);
+  updateThemeButtons(savedTheme);
+}
+
+function updateThemeButtons(theme) {
+  lightBtn.classList.toggle("active", theme === "light");
+  darkBtn.classList.toggle("active", theme === "dark");
+}
+
+
+function updateDashboard(project) {
+  if (!project) return;
+
+  const columns = project.columns || {};
+  const cards = Object.values(columns).flat();
+  const totalCards = cards.length;
+  const completedCards = (columns.done || []).length;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const overdueCards = cards.filter((card) => {
+    if (!card.date) return false;
+    const deadline = new Date(`${card.date}T00:00:00`);
+    return deadline < today && !((columns.done || []).some((doneCard) => doneCard.id === card.id));
+  }).length;
+
+  const checklistItems = cards.flatMap((card) => Array.isArray(card.checklist) ? card.checklist : []);
+  const checklistDone = checklistItems.filter((item) => item.done).length;
+  const checklistPercent = checklistItems.length ? Math.round((checklistDone / checklistItems.length) * 100) : 0;
+
+  dashTotalCards.textContent = String(totalCards);
+  dashCompletedCards.textContent = String(completedCards);
+  dashOverdueCards.textContent = String(overdueCards);
+  dashChecklistDone.textContent = `${checklistPercent}%`;
+}
+
+
+function isMobileViewport() {
+  return window.innerWidth <= 980;
+}
+
+function openMobileSidebar() {
+  appShell.classList.add("mobile-sidebar-open");
+  appShell.classList.remove("sidebar-collapsed");
+  updateSidebarToggleButton(false);
+}
+
+function closeMobileSidebar() {
+  appShell.classList.remove("mobile-sidebar-open");
+  updateSidebarToggleButton(true);
+}
+
+function toggleSidebar() {
+  if (isMobileViewport()) {
+    if (appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar();
+    else openMobileSidebar();
+    return;
+  }
+
+  const collapsed = appShell.classList.toggle("sidebar-collapsed");
+  safeSetItem(SIDEBAR_KEY, collapsed ? "1" : "0");
+  updateSidebarToggleButton(collapsed);
+}
+
+function applySavedSidebar() {
+  if (isMobileViewport()) {
+    appShell.classList.remove("sidebar-collapsed");
+    appShell.classList.remove("mobile-sidebar-open");
+    updateSidebarToggleButton(true);
+    return;
+  }
+
+  const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
+  appShell.classList.remove("mobile-sidebar-open");
+  appShell.classList.toggle("sidebar-collapsed", collapsed);
+  updateSidebarToggleButton(collapsed);
+}
+
+function handleResponsiveLayout() {
+  if (isMobileViewport()) {
+    appShell.classList.remove("sidebar-collapsed");
+    if (!appShell.classList.contains("mobile-sidebar-open")) updateSidebarToggleButton(true);
+  } else {
+    appShell.classList.remove("mobile-sidebar-open");
+    const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
+    appShell.classList.toggle("sidebar-collapsed", collapsed);
+    updateSidebarToggleButton(collapsed);
+  }
+}
+
+function updateSidebarToggleButton(collapsed) {
+  sidebarToggleBtn.textContent = collapsed ? "☰" : "✕";
+  sidebarToggleBtn.setAttribute("aria-label", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
+  sidebarToggleBtn.setAttribute("title", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
+}
+
+function columnLabel(columnId) {
+  const map = {
+    todo: "A Fazer",
+    doing: "Em Progresso",
+    done: "Concluído"
+  };
+  return map[columnId] || columnId;
+}
+
+function truncate(text, max) {
+  return text.length > max ? `${text.slice(0, max).trim()}...` : text;
+}
+
+function formatDate(dateString) {
+  if (!dateString) return "";
+  const date = new Date(`${dateString}T00:00:00`);
+  return date.toLocaleDateString("pt-BR");
+}
+
+function formatDateTime(dateString) {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  return date.toLocaleString("pt-BR");
+}
+
+function clone(data) {
+  return JSON.parse(JSON.stringify(data));
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+// CORREÇÃO PERFIL: Feedback interno e reset do botão para edições seguidas
+async function handleSaveProfile() {
+  if (!requireAuth("salvar o perfil")) return;
+  if (!supabase || !authUser) return;
+
+  const presentation = getUserPresentation(authUser);
+  const payload = {
+    user_id: authUser.id,
+    full_name: presentation.fullName,
+    email: presentation.email,
+    avatar_url: presentation.avatarUrl,
+    phone: profilePhoneInput?.value.trim() || null,
+    sector: profileSectorInput?.value.trim() || null,
+    bio: profileBioInput?.value.trim() || null
+  };
+
+  const originalText = saveProfileBtn.textContent;
+  saveProfileBtn.disabled = true;
+  saveProfileBtn.textContent = "Salvando...";
+
+  const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" }).select().single();
+  
+  if (error) {
+    console.error("Erro perfil:", error);
+    saveProfileBtn.disabled = false;
+    saveProfileBtn.textContent = originalText;
+    return;
+  }
+  
+  profileRecord = data;
+  updateAuthUI(authUser);
+  
+  saveProfileBtn.textContent = "✅ Salvo!";
+  setTimeout(() => {
+    saveProfileBtn.textContent = originalText;
+    saveProfileBtn.disabled = false;
+  }, 2200);
+}
+
+// CORREÇÃO LOGOUT: SignOut imediato e redirecionamento de URL para evitar sessões fantasmas
+function showSystemConfirmModal(title, message, onConfirm) {
+  projectModalTitle.textContent = title;
+  const modalBody = projectModalOverlay.querySelector(".modal-body");
+  const originalContent = modalBody.innerHTML;
+  modalBody.innerHTML = `<p class="view-text">${message}</p>`;
+  
+  // Substituição agressiva para limpar eventos acumulados
+  const newSaveBtn = saveProjectBtn.cloneNode(true);
+  const newCancelBtn = cancelProjectBtn.cloneNode(true);
+  saveProjectBtn.parentNode.replaceChild(newSaveBtn, saveProjectBtn);
+  cancelProjectBtn.parentNode.replaceChild(newCancelBtn, cancelProjectBtn);
+
+  const restore = () => {
+    modalBody.innerHTML = originalContent;
+    newSaveBtn.parentNode.replaceChild(saveProjectBtn, newSaveBtn);
+    newCancelBtn.parentNode.replaceChild(cancelProjectBtn, newCancelBtn);
+    closeProjectModal();
+  };
+
+  newSaveBtn.textContent = "Sim";
+  newCancelBtn.textContent = "Não";
+  newSaveBtn.onclick = () => { onConfirm(); restore(); };
+  newCancelBtn.onclick = restore;
+  openModal(projectModalOverlay);
+}
+
+async function handleLogout() {
+  if (!supabase || !authUser) return;
+  
+  showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
+    try {
+      const { fullName, avatarUrl } = getUserPresentation(authUser);
+      
+      // 1. Invalidar token no Supabase (Bloqueia novos acessos ao banco)
+      await supabase.auth.signOut();
+      
+      // 2. Limpar memória RAM local
+      authUser = null;
+      profileRecord = null;
+      clearDataForSignedOutUser();
+      closeProfileModal();
+      
+      // 3. UI de Despedida
+      showGoodbyeSplash(fullName, avatarUrl);
+      
+      // 4. Redirecionamento de URL (Garanta que a sessão morra no browser)
+      setTimeout(() => {
+        window.location.href = window.location.origin + window.location.pathname;
+      }, 3200);
+    } catch (e) {
+      console.error("Erro logoff:", e);
+      window.location.reload();
+    }
+  });
+}
+
+function showGoodbyeSplash(fullName, avatarUrl) {
+  const splash = document.createElement("div");
+  splash.id = "goodbyeSplash";
+  splash.className = "intro-splash intro-splash-welcome";
+  const initials = getInitials(fullName);
+  const mark = avatarUrl
+    ? `<img class="intro-splash-mark intro-splash-avatar" src="${escapeHtml(avatarUrl)}">`
+    : `<div class="intro-splash-mark intro-splash-avatar-fallback">${escapeHtml(initials)}</div>`;
+  
+  splash.innerHTML = `<div class="intro-splash-glow"></div><div class="intro-splash-card">${mark}<div class="intro-splash-copy"><strong>Até logo, ${escapeHtml(fullName)}!</strong><span>Sua sessão foi encerrada com sucesso.</span></div></div>`;
+  document.body.appendChild(splash);
+  setTimeout(() => splash.classList.add("is-hidden"), 2400);
+}
+
 });
