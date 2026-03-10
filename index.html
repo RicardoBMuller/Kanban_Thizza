@@ -11,6 +11,14 @@
     rel="stylesheet"
   />
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    try {
+      if (sessionStorage.getItem("kanban_login_welcome_pending") === "1") {
+        document.documentElement.classList.add("skip-login-intro-splash");
+        document.write('<style>#introSplash{display:none !important;opacity:0 !important;visibility:hidden !important;pointer-events:none !important;}</style>');
+      }
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div id="introSplash" class="intro-splash" aria-hidden="true">

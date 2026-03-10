@@ -2049,3 +2049,6 @@ html[data-theme="light"] .project-actions-menu {
     min-height: 52vh;
   }
 }
+
+
+.skip-login-intro-splash #introSplash{display:none !important;opacity:0 !important;visibility:hidden !important;pointer-events:none !important;}
