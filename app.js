@@ -171,6 +171,14 @@ async function init() {
 }
 
 
+function hasPendingLoginWelcome() {
+  try {
+    return sessionStorage.getItem(LOGIN_WELCOME_PENDING_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
 function runIntroSplash() {
   const splash = document.getElementById("introSplash");
   if (!splash) return;
@@ -178,6 +186,11 @@ function runIntroSplash() {
   requestAnimationFrame(() => {
     document.body.classList.add("is-app-ready");
   });
+
+  if (hasPendingLoginWelcome()) {
+    splash.remove();
+    return;
+  }
 
   setTimeout(() => {
     splash.classList.add("is-hidden");
@@ -423,7 +436,7 @@ function maybeShowLoginWelcome(user) {
   if (!user) return;
   let shouldShow = false;
   try {
-    shouldShow = sessionStorage.getItem(LOGIN_WELCOME_PENDING_KEY) === "1";
+    shouldShow = hasPendingLoginWelcome();
     if (shouldShow) sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY);
   } catch (_) {
     shouldShow = false;
@@ -455,15 +468,15 @@ function showWelcomeSplash(fullName, avatarUrl) {
     <div class="intro-splash-card">
       ${mark}
       <div class="intro-splash-copy">
-        <strong>Olá ${safeName}, seja bem-vindo à sua área de trabalho!</strong>
+        <strong>Olá ${safeName}, seja bem-vindo ao seu Kanban!</strong>
         <span>Seu espaço já está pronto para começar.</span>
       </div>
     </div>
   `;
 
   document.body.appendChild(splash);
-  setTimeout(() => splash.classList.add("is-hidden"), 1900);
-  setTimeout(() => splash.remove(), 2800);
+  setTimeout(() => splash.classList.add("is-hidden"), 2900);
+  setTimeout(() => splash.remove(), 4100);
 }
 
 function escapeHtml(value) {
