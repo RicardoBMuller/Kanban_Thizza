@@ -1949,3 +1949,11 @@ html[data-theme="light"] .project-actions-menu {
   -webkit-backdrop-filter: none !important;
   box-shadow: none !important;
 }
+
+
+.btn-google-login.is-locked{cursor:default;pointer-events:none;opacity:1;}
+.btn-google-login.is-locked:hover{transform:none;box-shadow:var(--shadow-soft);}
+.participants-list{display:flex;flex-wrap:wrap;gap:8px;}
+.card-participants{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;}
+.participant-chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);font-size:12px;font-weight:600;color:var(--text-primary);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.participant-chip-more{opacity:.78;}

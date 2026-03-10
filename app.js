@@ -100,6 +100,7 @@ const cardDescInput = document.getElementById("cardDescInput");
 const cardOwnerInput = document.getElementById("cardOwnerInput");
 const cardDateInput = document.getElementById("cardDateInput");
 const cardLabelsInput = document.getElementById("cardLabelsInput");
+const cardParticipantsInput = document.getElementById("cardParticipantsInput");
 
 const newChecklistItemInput = document.getElementById("newChecklistItemInput");
 const addChecklistItemBtn = document.getElementById("addChecklistItemBtn");
@@ -117,6 +118,8 @@ const viewCardDate = document.getElementById("viewCardDate");
 const viewCardColumn = document.getElementById("viewCardColumn");
 const viewCardDescription = document.getElementById("viewCardDescription");
 const viewCardLabels = document.getElementById("viewCardLabels");
+const viewCardParticipants = document.getElementById("viewCardParticipants");
+const viewParticipantsCounter = document.getElementById("viewParticipantsCounter");
 const viewNewCommentInput = document.getElementById("viewNewCommentInput");
 const viewAddCommentBtn = document.getElementById("viewAddCommentBtn");
 const viewChecklistCounter = document.getElementById("viewChecklistCounter");
@@ -352,20 +355,54 @@ async function initAuth() {
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
 
-    authUser = data.session?.user || null;
-    updateAuthUI(authUser);
+    await refreshAuthUser(data.session?.user || null);
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      authUser = session?.user || null;
-      updateAuthUI(authUser);
-      if (authUser) {
+    supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        await refreshAuthUser(session.user);
         closeAuthModal();
+      } else {
+        authUser = null;
+        updateAuthUI(null);
       }
     });
   } catch (error) {
     console.error("Erro ao iniciar Supabase Auth:", error);
     updateAuthUI(null);
   }
+}
+
+function getIdentityData(user) {
+  if (!user) return {};
+  const identities = Array.isArray(user.identities) ? user.identities : [];
+  const firstIdentity = identities.find((item) => item?.identity_data) || null;
+  return firstIdentity?.identity_data || {};
+}
+
+function getUserPresentation(user) {
+  const metadata = user?.user_metadata || {};
+  const identityData = getIdentityData(user);
+  const fullName = metadata.full_name || metadata.name || identityData.full_name || identityData.name || user?.email?.split("@")[0] || "Usuário";
+  const email = user?.email || metadata.email || identityData.email || "";
+  const avatarUrl = metadata.avatar_url || metadata.picture || identityData.avatar_url || identityData.picture || "";
+  return { fullName, email, avatarUrl };
+}
+
+async function refreshAuthUser(baseUser = null) {
+  let nextUser = baseUser || null;
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (!error && data?.user) {
+        nextUser = data.user;
+      }
+    } catch (error) {
+      console.warn("Não foi possível hidratar o usuário autenticado:", error);
+    }
+  }
+  authUser = nextUser;
+  updateAuthUI(authUser);
+  return authUser;
 }
 
 function updateAuthUI(user) {
@@ -376,11 +413,13 @@ function updateAuthUI(user) {
   profileBtn.classList.toggle("hidden", !isLogged);
   logoutBtn.classList.toggle("hidden", !isLogged);
 
+  loginOpenBtn.disabled = isLogged;
+  loginOpenBtn.classList.toggle("is-locked", isLogged);
+  loginOpenBtn.setAttribute("aria-disabled", isLogged ? "true" : "false");
+  loginOpenBtn.title = isLogged ? "Conta já conectada" : "Entrar com Google";
+
   if (user) {
-    const metadata = user.user_metadata || {};
-    const fullName = metadata.full_name || metadata.name || user.email?.split("@")[0] || "Usuário";
-    const email = user.email || "";
-    const avatarUrl = metadata.avatar_url || metadata.picture || "";
+    const { fullName, email, avatarUrl } = getUserPresentation(user);
     const initials = getInitials(fullName);
 
     profileName.textContent = fullName;
@@ -424,15 +463,16 @@ function updateAuthUI(user) {
 }
 
 function getInitials(name) {
-  return String(name || "TM")
+  return String(name || "KQ")
     .trim()
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
-    .join("") || "TM";
+    .join("") || "KQ";
 }
 
 function openAuthModal() {
+  if (authUser) return;
   authConfigHint.classList.toggle("hidden", isSupabaseConfigured());
   googleLoginBtn.disabled = !isSupabaseConfigured();
   openModal(authModalOverlay);
@@ -539,6 +579,7 @@ function migrateOldData() {
         owner: card.owner || "",
         date: card.date || "",
         labels: Array.isArray(card.labels) ? card.labels : [],
+        participants: Array.isArray(card.participants) ? card.participants : [],
         checklist: Array.isArray(card.checklist) ? card.checklist : [],
         comments: Array.isArray(card.comments) ? card.comments : [],
         createdAt: card.createdAt || new Date().toISOString()
@@ -668,6 +709,7 @@ function renderColumn(columnId, cards) {
       card.description,
       card.owner,
       ...(card.labels || []),
+      ...(card.participants || []),
       ...(card.comments || []).map((c) => c.text),
       ...(card.checklist || []).map((i) => i.text)
     ].join(" ").toLowerCase();
@@ -725,6 +767,10 @@ function renderColumn(columnId, cards) {
       : "";
 
     const commentsCount = (card.comments || []).length;
+    const participants = card.participants || [];
+    const participantsHtml = participants.length
+      ? `<div class="card-participants">${participants.slice(0, 3).map((participant) => `<span class="participant-chip">${escapeHtml(participant)}</span>`).join("")}${participants.length > 3 ? `<span class="participant-chip participant-chip-more">+${participants.length - 3}</span>` : ""}</div>`
+      : "";
 
     cardEl.innerHTML = `
       <h4 class="card-title">${escapeHtml(card.title || "Sem título")}</h4>
@@ -732,6 +778,7 @@ function renderColumn(columnId, cards) {
       ${labelsHtml ? `<div class="card-labels">${labelsHtml}</div>` : ""}
       ${meta.length ? `<div class="card-meta">${meta.join("")}</div>` : ""}
       ${checklistPreviewHtml}
+      ${participantsHtml}
       <div class="card-comments-row">
         <span class="card-comments-info">💬 ${commentsCount} comentário(s)</span>
         <div class="card-actions">
@@ -879,6 +926,7 @@ function openCardModal(mode, columnId, cardId = null) {
     cardOwnerInput.value = "";
     cardDateInput.value = "";
     cardLabelsInput.value = "";
+    cardParticipantsInput.value = "";
   } else {
     const found = findCard(cardId);
     if (!found) return;
@@ -893,6 +941,7 @@ function openCardModal(mode, columnId, cardId = null) {
     cardOwnerInput.value = found.card.owner || "";
     cardDateInput.value = found.card.date || "";
     cardLabelsInput.value = (found.card.labels || []).join(", ");
+    cardParticipantsInput.value = (found.card.participants || []).join(", ");
     tempChecklist = clone(found.card.checklist || []);
     tempComments = clone(found.card.comments || []);
   }
@@ -932,6 +981,10 @@ function handleSaveCard() {
     labels: cardLabelsInput.value
       .split(",")
       .map((label) => label.trim())
+      .filter(Boolean),
+    participants: cardParticipantsInput.value
+      .split(",")
+      .map((participant) => participant.trim())
       .filter(Boolean),
     checklist: clone(tempChecklist),
     comments: clone(tempComments),
@@ -1103,6 +1156,20 @@ function openViewCardModal(cardId) {
     });
   } else {
     viewCardLabels.innerHTML = `<div class="empty-state">Nenhuma label.</div>`;
+  }
+
+  const participants = card.participants || [];
+  viewParticipantsCounter.textContent = `${participants.length}`;
+  viewCardParticipants.innerHTML = "";
+  if (participants.length) {
+    participants.forEach((participant) => {
+      const chip = document.createElement("span");
+      chip.className = "participant-chip";
+      chip.textContent = participant;
+      viewCardParticipants.appendChild(chip);
+    });
+  } else {
+    viewCardParticipants.innerHTML = `<div class="empty-state">Nenhum participante.</div>`;
   }
 
   const checklist = card.checklist || [];
