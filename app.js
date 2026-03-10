@@ -508,14 +508,61 @@ async function handleSaveProfile() {
   const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" }).select().single();
   if (error) {
     console.error("Erro ao salvar perfil:", error);
-    alert("Não foi possível salvar o perfil.");
+    showSystemModal("Erro", "Não foi possível salvar as informações do perfil.");
     return;
   }
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual com modal padrão do sistema
+  // Feedback visual com modal do sistema em vez de alerta
   showSystemModal("Sucesso", "As informações do seu perfil foram salvas com sucesso!");
+}
+
+// Funções para Modais de Sistema (Sucesso e Confirmação)
+function showSystemModal(title, message) {
+  projectModalTitle.textContent = title;
+  const originalBody = projectModalOverlay.querySelector(".modal-body").innerHTML;
+  projectModalOverlay.querySelector(".modal-body").innerHTML = `<p class="view-text">${message}</p>`;
+  saveProjectBtn.classList.add("hidden");
+  cancelProjectBtn.textContent = "OK";
+  
+  const restore = () => {
+    projectModalOverlay.querySelector(".modal-body").innerHTML = originalBody;
+    saveProjectBtn.classList.remove("hidden");
+    cancelProjectBtn.textContent = "Cancelar";
+    cancelProjectBtn.removeEventListener("click", restore);
+    closeProjectModal();
+  };
+  
+  cancelProjectBtn.addEventListener("click", restore);
+  openModal(projectModalOverlay);
+}
+
+function showSystemConfirmModal(title, message, onConfirm) {
+  projectModalTitle.textContent = title;
+  const originalBody = projectModalOverlay.querySelector(".modal-body").innerHTML;
+  projectModalOverlay.querySelector(".modal-body").innerHTML = `<p class="view-text">${message}</p>`;
+  
+  const restore = () => {
+    projectModalOverlay.querySelector(".modal-body").innerHTML = originalBody;
+    saveProjectBtn.textContent = "Salvar";
+    cancelProjectBtn.textContent = "Cancelar";
+    saveProjectBtn.removeEventListener("click", runConfirm);
+    cancelProjectBtn.removeEventListener("click", restore);
+  };
+
+  const runConfirm = () => {
+    onConfirm();
+    restore();
+    closeProjectModal();
+  };
+
+  saveProjectBtn.textContent = "Sim";
+  cancelProjectBtn.textContent = "Não";
+  
+  saveProjectBtn.addEventListener("click", runConfirm);
+  cancelProjectBtn.addEventListener("click", restore);
+  openModal(projectModalOverlay);
 }
 
 async function loadCloudData() {
@@ -873,70 +920,20 @@ async function handleGoogleLogin() {
   }
 }
 
-// Lógica de logout com modal de confirmação do sistema
 async function handleLogout() {
   if (!supabase) return;
   
-  // Exibe modal de confirmação do sistema reaproveitando UI padrão
-  showSystemConfirmModal("Confirmação de Saída", "Você realmente deseja sair do Kanban Quest?", async () => {
+  // Confirmação visual integrada ao sistema
+  showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
     try {
       try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
       await supabase.auth.signOut();
       closeProfileModal();
-      window.location.reload(); // Recarrega para garantir reset total do estado
+      window.location.reload(); // Recarrega para limpar o estado
     } catch (error) {
       console.error("Erro ao sair:", error);
     }
   });
-}
-
-// Nova função para exibir modal de confirmação do sistema
-function showSystemConfirmModal(title, message, onConfirm) {
-  projectModalTitle.textContent = title;
-  const originalBody = projectModalOverlay.querySelector(".modal-body").innerHTML;
-  projectModalOverlay.querySelector(".modal-body").innerHTML = `<p class="view-text">${message}</p>`;
-  
-  const restore = () => {
-    projectModalOverlay.querySelector(".modal-body").innerHTML = originalBody;
-    saveProjectBtn.textContent = "Salvar";
-    cancelProjectBtn.textContent = "Cancelar";
-    saveProjectBtn.removeEventListener("click", confirmAction);
-    cancelProjectBtn.removeEventListener("click", restore);
-  };
-
-  const confirmAction = () => {
-    onConfirm();
-    restore();
-    closeProjectModal();
-  };
-
-  saveProjectBtn.textContent = "Sim";
-  cancelProjectBtn.textContent = "Não";
-  
-  saveProjectBtn.addEventListener("click", confirmAction);
-  cancelProjectBtn.addEventListener("click", restore);
-  
-  openModal(projectModalOverlay);
-}
-
-// Nova função para exibir modal informativo (Sucesso)
-function showSystemModal(title, message) {
-  projectModalTitle.textContent = title;
-  const originalBody = projectModalOverlay.querySelector(".modal-body").innerHTML;
-  projectModalOverlay.querySelector(".modal-body").innerHTML = `<p class="view-text">${message}</p>`;
-  saveProjectBtn.classList.add("hidden");
-  cancelProjectBtn.textContent = "OK";
-  
-  const restore = () => {
-    projectModalOverlay.querySelector(".modal-body").innerHTML = originalBody;
-    saveProjectBtn.classList.remove("hidden");
-    cancelProjectBtn.textContent = "Cancelar";
-    cancelProjectBtn.removeEventListener("click", restore);
-    closeProjectModal();
-  };
-  
-  cancelProjectBtn.addEventListener("click", restore);
-  openModal(projectModalOverlay);
 }
 
 function participantDisplayName(participant) {
