@@ -490,7 +490,7 @@ function fillProfileForm() {
   profileBioInput.value = profileRecord?.bio || "";
 }
 
-// Correção Salvar Perfil: Reset de estado visual para permitir novas alterações
+// CORREÇÃO PERFIL: Feedback interno e reset do botão para permitir sucessivas atualizações
 async function handleSaveProfile() {
   if (!requireAuth("salvar o perfil")) return;
   if (!supabase || !authUser) return;
@@ -506,34 +506,40 @@ async function handleSaveProfile() {
     bio: profileBioInput?.value.trim() || null
   };
 
+  // Feedback de carregamento
+  const originalText = saveProfileBtn.textContent;
+  saveProfileBtn.disabled = true;
+  saveProfileBtn.textContent = "Salvando...";
+
   const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" }).select().single();
+  
   if (error) {
     console.error("Erro ao salvar perfil:", error);
+    saveProfileBtn.disabled = false;
+    saveProfileBtn.textContent = originalText;
     return;
   }
   
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual dentro do próprio modal de perfil com reset
-  const originalText = saveProfileBtn.textContent;
+  // Feedback visual dentro do modal
   saveProfileBtn.textContent = "✅ Salvo!";
-  saveProfileBtn.disabled = true; // Impede duplo clique rápido
   
   setTimeout(() => {
     saveProfileBtn.textContent = originalText;
-    saveProfileBtn.disabled = false; // Reabilita para novas alterações
-  }, 2500);
+    saveProfileBtn.disabled = false; // Permite nova edição imediatamente
+  }, 2200);
 }
 
-// Correção Logout: Confirmação visual integrada e Fadeout de despedida
+// CORREÇÃO LOGOUT: Garantia de SignOut real e fadeout de despedida completo
 function showSystemConfirmModal(title, message, onConfirm) {
   projectModalTitle.textContent = title;
   const modalBody = projectModalOverlay.querySelector(".modal-body");
   const originalContent = modalBody.innerHTML;
   modalBody.innerHTML = `<p class="view-text">${message}</p>`;
   
-  // Limpeza profunda de eventos para evitar erros de validação de projeto
+  // Substituição por clones para limpar listeners de validação de projeto
   const newSaveBtn = saveProjectBtn.cloneNode(true);
   const newCancelBtn = cancelProjectBtn.cloneNode(true);
   saveProjectBtn.parentNode.replaceChild(newSaveBtn, saveProjectBtn);
@@ -555,41 +561,56 @@ function showSystemConfirmModal(title, message, onConfirm) {
 }
 
 async function handleLogout() {
-  if (!supabase) return;
+  if (!supabase || !authUser) return;
+  
   showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
-    const { fullName, avatarUrl } = getUserPresentation(authUser);
-    closeProfileModal();
-    
-    // Animação de saída
-    showGoodbyeSplash(fullName, avatarUrl);
-    
-    setTimeout(async () => {
+    try {
+      const { fullName, avatarUrl } = getUserPresentation(authUser);
+      
+      // 1. Comando real de logout (Essencial ser o primeiro passo)
       await supabase.auth.signOut();
+      
+      // 2. Limpeza de estados locais
+      try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
+      closeProfileModal();
+      
+      // 3. Gatilho visual de despedida
+      showGoodbyeSplash(fullName, avatarUrl);
+      
+      // 4. Redirecionamento forçado após ciclo de animação
+      setTimeout(() => {
+        window.location.href = window.location.origin + window.location.pathname;
+      }, 3200);
+    } catch (e) {
+      console.error("Erro no fluxo de logout:", e);
       window.location.reload();
-    }, 3000);
+    }
   });
 }
 
 function showGoodbyeSplash(fullName, avatarUrl) {
   const splash = document.createElement("div");
+  splash.id = "goodbyeSplash";
   splash.className = "intro-splash intro-splash-welcome";
   const initials = getInitials(fullName);
   const mark = avatarUrl
     ? `<img class="intro-splash-mark intro-splash-avatar" src="${escapeHtml(avatarUrl)}">`
     : `<div class="intro-splash-mark intro-splash-avatar-fallback">${escapeHtml(initials)}</div>`;
+  
   splash.innerHTML = `
     <div class="intro-splash-glow"></div>
     <div class="intro-splash-card">
       ${mark}
       <div class="intro-splash-copy">
         <strong>Até logo, ${escapeHtml(fullName)}!</strong>
-        <span>Sua sessão foi encerrada. O Kanban Quest voltará ao início.</span>
+        <span>Sua sessão foi encerrada com sucesso.</span>
       </div>
     </div>`;
+    
   document.body.appendChild(splash);
   
-  // Efeito de Fadeout solicitado
-  setTimeout(() => splash.classList.add("is-hidden"), 2200);
+  // Fadeout antes do refresh
+  setTimeout(() => splash.classList.add("is-hidden"), 2400);
 }
 
 async function loadCloudData() {
@@ -1634,7 +1655,7 @@ function renderEditChecklist() {
       <button class="btn btn-soft btn-sm" type="button">Remover</button>
     `;
 
-    const checkbox = row.querySelector('input[type=\"checkbox\"]');
+    const checkbox = row.querySelector('input[type="checkbox"]');
     const removeBtn = row.querySelector("button");
 
     checkbox.addEventListener("change", () => {
@@ -2053,5 +2074,483 @@ function escapeHtml(text) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+// CORREÇÃO PERFIL: Feedback interno e reset do botão para permitir edições sucessivas
+async function handleSaveProfile() {
+  if (!requireAuth("salvar o perfil")) return;
+  if (!supabase || !authUser) return;
+
+  const presentation = getUserPresentation(authUser);
+  const payload = {
+    user_id: authUser.id,
+    full_name: presentation.fullName,
+    email: presentation.email,
+    avatar_url: presentation.avatarUrl,
+    phone: profilePhoneInput?.value.trim() || null,
+    sector: profileSectorInput?.value.trim() || null,
+    bio: profileBioInput?.value.trim() || null
+  };
+
+  // Feedback de carregamento
+  const originalText = saveProfileBtn.textContent;
+  saveProfileBtn.disabled = true;
+  saveProfileBtn.textContent = "Salvando...";
+
+  const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" }).select().single();
+  
+  if (error) {
+    console.error("Erro ao salvar perfil:", error);
+    saveProfileBtn.disabled = false;
+    saveProfileBtn.textContent = originalText;
+    return;
+  }
+  
+  profileRecord = data;
+  updateAuthUI(authUser);
+  
+  // Feedback visual dentro do modal
+  saveProfileBtn.textContent = "✅ Salvo!";
+  
+  setTimeout(() => {
+    saveProfileBtn.textContent = originalText;
+    saveProfileBtn.disabled = false; // Permite nova edição imediatamente
+  }, 2200);
+}
+
+// CORREÇÃO LOGOUT: Garantia de SignOut real e fadeout de despedida completo
+function showSystemConfirmModal(title, message, onConfirm) {
+  projectModalTitle.textContent = title;
+  const modalBody = projectModalOverlay.querySelector(".modal-body");
+  const originalContent = modalBody.innerHTML;
+  modalBody.innerHTML = `<p class="view-text">${message}</p>`;
+  
+  // Substituição por clones para limpar listeners de validação de projeto
+  const newSaveBtn = saveProjectBtn.cloneNode(true);
+  const newCancelBtn = cancelProjectBtn.cloneNode(true);
+  saveProjectBtn.parentNode.replaceChild(newSaveBtn, saveProjectBtn);
+  cancelProjectBtn.parentNode.replaceChild(newCancelBtn, cancelProjectBtn);
+
+  const restore = () => {
+    modalBody.innerHTML = originalContent;
+    newSaveBtn.parentNode.replaceChild(saveProjectBtn, newSaveBtn);
+    newCancelBtn.parentNode.replaceChild(cancelProjectBtn, newCancelBtn);
+    closeProjectModal();
+  };
+
+  newSaveBtn.textContent = "Sim";
+  newCancelBtn.textContent = "Não";
+  
+  newSaveBtn.onclick = () => { onConfirm(); restore(); };
+  newCancelBtn.onclick = restore;
+  openModal(projectModalOverlay);
+}
+
+async function handleLogout() {
+  if (!supabase || !authUser) return;
+  
+  showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
+    try {
+      const { fullName, avatarUrl } = getUserPresentation(authUser);
+      
+      // 1. Comando real de logout (Essencial ser o primeiro passo)
+      await supabase.auth.signOut();
+      
+      // 2. Limpeza de estados locais
+      try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
+      closeProfileModal();
+      
+      // 3. Gatilho visual de despedida
+      showGoodbyeSplash(fullName, avatarUrl);
+      
+      // 4. Redirecionamento forçado após ciclo de animação
+      setTimeout(() => {
+        window.location.href = window.location.origin + window.location.pathname;
+      }, 3200);
+    } catch (e) {
+      console.error("Erro no fluxo de logout:", e);
+      window.location.reload();
+    }
+  });
+}
+
+function showGoodbyeSplash(fullName, avatarUrl) {
+  const splash = document.createElement("div");
+  splash.id = "goodbyeSplash";
+  splash.className = "intro-splash intro-splash-welcome";
+  const initials = getInitials(fullName);
+  const mark = avatarUrl
+    ? `<img class="intro-splash-mark intro-splash-avatar" src="${escapeHtml(avatarUrl)}">`
+    : `<div class="intro-splash-mark intro-splash-avatar-fallback">${escapeHtml(initials)}</div>`;
+  
+  splash.innerHTML = `
+    <div class="intro-splash-glow"></div>
+    <div class="intro-splash-card">
+      ${mark}
+      <div class="intro-splash-copy">
+        <strong>Até logo, ${escapeHtml(fullName)}!</strong>
+        <span>Sua sessão foi encerrada com sucesso.</span>
+      </div>
+    </div>`;
+    
+  document.body.appendChild(splash);
+  
+  // Fadeout antes do refresh
+  setTimeout(() => splash.classList.add("is-hidden"), 2400);
+}
+
+async function loadCloudData() {
+  if (!supabase || !authUser) return;
+
+  const [projectsRes, cardsRes] = await Promise.all([
+    supabase.from("projects").select("id,name,created_at").eq("owner_id", authUser.id).order("created_at", { ascending: true }),
+    supabase.from("cards").select("*").eq("owner_id", authUser.id).order("position", { ascending: true })
+  ]);
+
+  if (projectsRes.error) {
+    console.error("Erro ao carregar projetos:", projectsRes.error);
+    return;
+  }
+  if (cardsRes.error) {
+    console.error("Erro ao carregar cards:", cardsRes.error);
+    return;
+  }
+
+  const nextState = { currentProjectId: null, projects: [] };
+  const projectMap = new Map();
+
+  (projectsRes.data || []).forEach((project) => {
+    const item = {
+      id: project.id,
+      name: project.name,
+      createdAt: project.created_at,
+      columns: defaultColumns()
+    };
+    projectMap.set(project.id, item);
+    nextState.projects.push(item);
+  });
+
+  (cardsRes.data || []).forEach((row) => {
+    const targetProject = projectMap.get(row.project_id);
+    if (!targetProject) return;
+    const columnKey = row.column_key || "todo";
+    const card = {
+      id: row.id,
+      title: row.title || "Sem título",
+      description: row.description || "",
+      owner: row.owner || "",
+      date: row.due_date || "",
+      labels: Array.isArray(row.labels) ? row.labels : [],
+      participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : []),
+      checklist: Array.isArray(row.checklist) ? row.checklist : [],
+      comments: Array.isArray(row.comments) ? row.comments : [],
+      createdAt: row.created_at || new Date().toISOString()
+    };
+    if (!targetProject.columns[columnKey]) targetProject.columns[columnKey] = [];
+    targetProject.columns[columnKey].push(card);
+  });
+
+  suspendCloudSync = true;
+  state = nextState;
+  currentProjectId = nextState.projects.find((project) => project.id === currentProjectId)?.id || nextState.projects[0]?.id || null;
+  saveState();
+  suspendCloudSync = false;
+  renderProjects();
+  renderBoard();
+}
+
+function clearDataForSignedOutUser() {
+  suspendCloudSync = true;
+  state = { currentProjectId: null, projects: [] };
+  currentProjectId = null;
+  saveState();
+  suspendCloudSync = false;
+  renderProjects();
+  renderBoard();
+}
+
+function queueCloudSync() {
+  if (!supabase || !authUser || suspendCloudSync) return;
+  if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(() => {
+    syncAllToCloud().catch((error) => console.error("Erro ao sincronizar com o Supabase:", error));
+  }, 400);
+}
+
+function flattenCardsForCloud() {
+  const rows = [];
+  state.projects.forEach((project) => {
+    Object.entries(project.columns || {}).forEach(([columnKey, cards]) => {
+      (cards || []).forEach((card, index) => {
+        rows.push({
+          id: String(card.id),
+          owner_id: authUser.id,
+          project_id: String(project.id),
+          column_key: columnKey,
+          position: index,
+          title: card.title || "Sem título",
+          description: card.description || "",
+          owner: card.owner || "",
+          due_date: card.date || null,
+          labels: Array.isArray(card.labels) ? card.labels : [],
+          participants: normalizeParticipants(card.participants || []),
+          checklist: Array.isArray(card.checklist) ? card.checklist : [],
+          comments: Array.isArray(card.comments) ? card.comments : [],
+          created_at: card.createdAt || new Date().toISOString()
+        });
+      });
+    });
+  });
+  return rows;
+}
+
+function flattenParticipantLinks() {
+  const rows = [];
+  state.projects.forEach((project) => {
+    Object.values(project.columns || {}).flat().forEach((card) => {
+      normalizeParticipants(card.participants || []).forEach((participant) => {
+        if (!participant.user_id) return;
+        rows.push({
+          card_id: String(card.id),
+          participant_user_id: participant.user_id,
+          owner_id: authUser.id,
+          project_id: String(project.id),
+          participant_name: participantDisplayName(participant),
+          participant_email: participantEmail(participant),
+          participant_avatar_url: participant.avatar_url || null
+        });
+      });
+    });
+  });
+  return rows;
+}
+
+async function syncAllToCloud() {
+  if (!supabase || !authUser || suspendCloudSync || isSyncingCloud) return;
+  isSyncingCloud = true;
+
+  try {
+    const projectRows = state.projects.map((project) => ({
+      id: String(project.id),
+      owner_id: authUser.id,
+      name: project.name,
+      created_at: project.createdAt || new Date().toISOString()
+    }));
+
+    const remoteProjectsRes = await supabase.from("projects").select("id").eq("owner_id", authUser.id);
+    if (remoteProjectsRes.error) throw remoteProjectsRes.error;
+    const remoteProjectIds = (remoteProjectsRes.data || []).map((row) => row.id);
+    const localProjectIds = projectRows.map((row) => row.id);
+
+    if (projectRows.length) {
+      const upsertProjects = await supabase.from("projects").upsert(projectRows, { onConflict: "id" });
+      if (upsertProjects.error) throw upsertProjects.error;
+    }
+
+    const projectsToDelete = remoteProjectIds.filter((id) => !localProjectIds.includes(id));
+    if (projectsToDelete.length) {
+      const delProjects = await supabase.from("projects").delete().eq("owner_id", authUser.id).in("id", projectsToDelete);
+      if (delProjects.error) throw delProjects.error;
+    }
+    if (!localProjectIds.length && remoteProjectIds.length) {
+      const delAllProjects = await supabase.from("projects").delete().eq("owner_id", authUser.id);
+      if (delAllProjects.error) throw delAllProjects.error;
+    }
+
+    const cardRows = flattenCardsForCloud();
+    const remoteCardsRes = await supabase.from("cards").select("id").eq("owner_id", authUser.id);
+    if (remoteCardsRes.error) throw remoteCardsRes.error;
+    const remoteCardIds = (remoteCardsRes.data || []).map((row) => row.id);
+    const localCardIds = cardRows.map((row) => row.id);
+
+    if (cardRows.length) {
+      const upsertCards = await supabase.from("cards").upsert(cardRows, { onConflict: "id" });
+      if (upsertCards.error) throw upsertCards.error;
+    }
+
+    const cardsToDelete = remoteCardIds.filter((id) => !localCardIds.includes(id));
+    if (cardsToDelete.length) {
+      const delCards = await supabase.from("cards").delete().eq("owner_id", authUser.id).in("id", cardsToDelete);
+      if (delCards.error) throw delCards.error;
+    }
+    if (!localCardIds.length && remoteCardIds.length) {
+      const delAllCards = await supabase.from("cards").delete().eq("owner_id", authUser.id);
+      if (delAllCards.error) throw delAllCards.error;
+    }
+
+    const participantRows = flattenParticipantLinks();
+    const remoteParticipantsRes = await supabase.from("card_participants").select("card_id,participant_user_id").eq("owner_id", authUser.id);
+    if (remoteParticipantsRes.error) throw remoteParticipantsRes.error;
+    const remoteKeys = (remoteParticipantsRes.data || []).map((row) => `${row.card_id}::${row.participant_user_id}`);
+    const localKeys = participantRows.map((row) => `${row.card_id}::${row.participant_user_id}`);
+
+    if (participantRows.length) {
+      const upsertParticipants = await supabase.from("card_participants").upsert(participantRows, { onConflict: "card_id,participant_user_id" });
+      if (upsertParticipants.error) throw upsertParticipants.error;
+    }
+
+    const participantDeletes = remoteKeys.filter((key) => !localKeys.includes(key));
+    for (const key of participantDeletes) {
+      const [card_id, participant_user_id] = key.split("::");
+      const delParticipant = await supabase.from("card_participants").delete().eq("owner_id", authUser.id).eq("card_id", card_id).eq("participant_user_id", participant_user_id);
+      if (delParticipant.error) throw delParticipant.error;
+    }
+  } finally {
+    isSyncingCloud = false;
+  }
+}
+
+function maybeShowLoginWelcome(user) {
+  if (!user) return;
+  let shouldShow = false;
+  try {
+    shouldShow = hasPendingLoginWelcome();
+    if (shouldShow) sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY);
+  } catch (_) {
+    shouldShow = false;
+  }
+  if (!shouldShow) return;
+
+  const { fullName, avatarUrl } = getUserPresentation(user);
+  showWelcomeSplash(fullName, avatarUrl);
+}
+
+function showWelcomeSplash(fullName, avatarUrl) {
+  const existing = document.getElementById("welcomeSplash");
+  if (existing) existing.remove();
+
+  const splash = document.createElement("div");
+  splash.id = "welcomeSplash";
+  splash.className = "intro-splash intro-splash-welcome";
+  splash.setAttribute("aria-hidden", "true");
+
+  const initials = getInitials(fullName);
+  const safeName = escapeHtml(fullName);
+  const safeAvatar = escapeHtml(avatarUrl);
+  const mark = avatarUrl
+    ? `<img class="intro-splash-mark intro-splash-avatar" src="${safeAvatar}" alt="Avatar de ${safeName}">`
+    : `<div class="intro-splash-mark intro-splash-avatar-fallback">${escapeHtml(initials)}</div>`;
+
+  splash.innerHTML = `
+    <div class="intro-splash-glow"></div>
+    <div class="intro-splash-card">
+      ${mark}
+      <div class="intro-splash-copy">
+        <strong>Olá ${safeName}, seja bem-vindo ao seu Kanban!</strong>
+        <span>Seu espaço já está pronto para começar.</span>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(splash);
+  setTimeout(() => splash.classList.add("is-hidden"), 2900);
+  setTimeout(() => splash.remove(), 4100);
+}
+
+function updateAuthUI(user) {
+  const isLogged = Boolean(user);
+  const loginLabel = isLogged ? "Conta conectada" : "Entrar com Google";
+  loginOpenBtn.innerHTML = `<span class="google-mark" aria-hidden="true"><svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path fill="#EA4335" d="M9 7.363v3.49h4.85c-.213 1.122-.853 2.072-1.812 2.711l2.928 2.273C16.674 14.266 17.5 11.916 17.5 9c0-.554-.05-1.087-.143-1.637H9z"/><path fill="#34A853" d="M9 17.5c2.43 0 4.469-.805 5.958-2.184l-2.928-2.273c-.812.544-1.852.866-3.03.866-2.33 0-4.303-1.574-5.008-3.69H.964v2.319A8.998 8.998 0 009 17.5z"/><path fill="#4A90E2" d="M3.992 10.219A5.396 5.396 0 013.712 9c0-.423.1-.83.28-1.219V5.462H.964A8.998 8.998 0 00.5 9c0 1.45.348 2.82.964 4.038l2.528-1.962z"/><path fill="#FBBC05" d="M9 4.091c1.321 0 2.507.455 3.441 1.348l2.58-2.58C13.464 1.412 11.427.5 9 .5A8.998 8.998 0 00.964 5.462L3.992 7.78C4.697 5.665 6.67 4.091 9 4.091z"/></svg></span><span class="btn-google-text">${loginLabel}</span>`;
+  profileBtn.classList.toggle("hidden", !isLogged);
+  logoutBtn.classList.toggle("hidden", !isLogged);
+  loginOpenBtn.disabled = isLogged;
+  loginOpenBtn.classList.toggle("is-locked", isLogged);
+  loginOpenBtn.setAttribute("aria-disabled", isLogged ? "true" : "false");
+  loginOpenBtn.title = isLogged ? "Conta já conectada" : "Entrar com Google";
+
+  if (user) {
+    const { fullName, email, avatarUrl } = getUserPresentation(user);
+    const initials = getInitials(fullName);
+    profileName.textContent = fullName;
+    profileEmail.textContent = email;
+    profileAvatarFallback.textContent = initials;
+    brandUserName.textContent = fullName;
+    brandMark.textContent = initials;
+    fillProfileForm();
+
+    if (avatarUrl) {
+      profileAvatar.src = avatarUrl;
+      profileAvatar.classList.remove("hidden");
+      profileAvatarFallback.classList.add("hidden");
+      brandAvatar.src = avatarUrl;
+      brandAvatar.classList.remove("hidden");
+      brandMark.classList.add("hidden");
+    } else {
+      profileAvatar.removeAttribute("src");
+      profileAvatar.classList.add("hidden");
+      profileAvatarFallback.classList.remove("hidden");
+      brandAvatar.removeAttribute("src");
+      brandAvatar.classList.add("hidden");
+      brandMark.classList.remove("hidden");
+    }
+  } else {
+    profileName.textContent = "Visitante";
+    profileEmail.textContent = "Faça login para conectar sua conta.";
+    profileAvatarFallback.textContent = "KQ";
+    profileAvatar.removeAttribute("src");
+    profileAvatar.classList.add("hidden");
+    profileAvatarFallback.classList.remove("hidden");
+    brandUserName.textContent = "Kanban Quest";
+    brandMark.textContent = "KQ";
+    brandAvatar.removeAttribute("src");
+    brandAvatar.classList.add("hidden");
+    brandMark.classList.remove("hidden");
+    if (profilePhoneInput) profilePhoneInput.value = "";
+    if (profileSectorInput) profileSectorInput.value = "";
+    if (profileBioInput) profileBioInput.value = "";
+  }
+
+  updateCreationAccess();
+  renderProjects();
+  renderBoard();
+}
+
+function getInitials(name) {
+  return String(name || "KQ")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "KQ";
+}
+
+function openAuthModal() {
+  if (authUser) return;
+  authConfigHint.classList.toggle("hidden", isSupabaseConfigured());
+  googleLoginBtn.disabled = !isSupabaseConfigured();
+  openModal(authModalOverlay);
+}
+
+function closeAuthModal() {
+  closeModal(authModalOverlay);
+}
+
+function openProfileModal() {
+  if (profileRecord) fillProfileForm();
+  openModal(profileModalOverlay);
+}
+
+function closeProfileModal() {
+  closeModal(profileModalOverlay);
+}
+
+async function handleGoogleLogin() {
+  if (!supabase) {
+    authConfigHint.classList.remove("hidden");
+    return;
+  }
+
+  try {
+    try { sessionStorage.setItem(LOGIN_WELCOME_PENDING_KEY, "1"); } catch (_) {}
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.href.split("#")[0]
+      }
+    });
+  } catch (error) {
+    console.error("Erro no login com Google:", error);
+    alert("Não foi possível iniciar o login com Google.");
+  }
 }
 });
