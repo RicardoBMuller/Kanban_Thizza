@@ -183,7 +183,6 @@ async function init() {
   runIntroSplash();
 }
 
-
 function hasPendingLoginWelcome() {
   try {
     return sessionStorage.getItem(LOGIN_WELCOME_PENDING_KEY) === "1";
@@ -490,7 +489,7 @@ function fillProfileForm() {
   profileBioInput.value = profileRecord?.bio || "";
 }
 
-// CORREÇÃO PERFIL: Feedback interno e reset do botão para permitir sucessivas atualizações
+// CORREÇÃO PERFIL: Feedback interno e reset do botão para permitir edições sucessivas
 async function handleSaveProfile() {
   if (!requireAuth("salvar o perfil")) return;
   if (!supabase || !authUser) return;
@@ -523,12 +522,12 @@ async function handleSaveProfile() {
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual dentro do modal
+  // Feedback visual dentro do próprio modal
   saveProfileBtn.textContent = "✅ Salvo!";
   
   setTimeout(() => {
     saveProfileBtn.textContent = originalText;
-    saveProfileBtn.disabled = false; // Permite nova edição imediatamente
+    saveProfileBtn.disabled = false; // Reabilita para nova edição
   }, 2200);
 }
 
@@ -567,17 +566,19 @@ async function handleLogout() {
     try {
       const { fullName, avatarUrl } = getUserPresentation(authUser);
       
-      // 1. Comando real de logout (Essencial ser o primeiro passo)
+      // 1. Invalidar token no Supabase primeiro
       await supabase.auth.signOut();
       
-      // 2. Limpeza de estados locais
-      try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
+      // 2. Limpar estados de memória locais instantaneamente
+      authUser = null;
+      profileRecord = null;
+      clearDataForSignedOutUser();
       closeProfileModal();
       
       // 3. Gatilho visual de despedida
       showGoodbyeSplash(fullName, avatarUrl);
       
-      // 4. Redirecionamento forçado após ciclo de animação
+      // 4. Redirecionamento completo para limpar a sessão no browser
       setTimeout(() => {
         window.location.href = window.location.origin + window.location.pathname;
       }, 3200);
@@ -609,7 +610,7 @@ function showGoodbyeSplash(fullName, avatarUrl) {
     
   document.body.appendChild(splash);
   
-  // Fadeout antes do refresh
+  // Fadeout antes do refresh final
   setTimeout(() => splash.classList.add("is-hidden"), 2400);
 }
 
@@ -2109,12 +2110,12 @@ async function handleSaveProfile() {
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual dentro do modal
+  // Feedback visual dentro do próprio modal
   saveProfileBtn.textContent = "✅ Salvo!";
   
   setTimeout(() => {
     saveProfileBtn.textContent = originalText;
-    saveProfileBtn.disabled = false; // Permite nova edição imediatamente
+    saveProfileBtn.disabled = false; // Reabilita para nova edição
   }, 2200);
 }
 
@@ -2153,17 +2154,19 @@ async function handleLogout() {
     try {
       const { fullName, avatarUrl } = getUserPresentation(authUser);
       
-      // 1. Comando real de logout (Essencial ser o primeiro passo)
+      // 1. Invalidar token no Supabase primeiro
       await supabase.auth.signOut();
       
-      // 2. Limpeza de estados locais
-      try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
+      // 2. Limpar estados de memória locais instantaneamente
+      authUser = null;
+      profileRecord = null;
+      clearDataForSignedOutUser();
       closeProfileModal();
       
       // 3. Gatilho visual de despedida
       showGoodbyeSplash(fullName, avatarUrl);
       
-      // 4. Redirecionamento forçado após ciclo de animação
+      // 4. Redirecionamento completo para limpar a sessão no browser
       setTimeout(() => {
         window.location.href = window.location.origin + window.location.pathname;
       }, 3200);
@@ -2195,7 +2198,7 @@ function showGoodbyeSplash(fullName, avatarUrl) {
     
   document.body.appendChild(splash);
   
-  // Fadeout antes do refresh
+  // Fadeout antes do refresh final
   setTimeout(() => splash.classList.add("is-hidden"), 2400);
 }
 
