@@ -30,16 +30,13 @@ const modalCloseTimers = new WeakMap();
 let supabase = null;
 let authUser = null;
 
-function isMobileViewport() {
-  return window.matchMedia("(max-width: 900px)").matches;
-}
-
 // DOM
 const projectList = document.getElementById("projectList");
 const searchInput = document.getElementById("searchInput");
 const boardTitle = document.getElementById("boardTitle");
 const sidebarToggleBtn = document.getElementById("sidebarToggleBtn");
 const appShell = document.querySelector(".app-shell");
+const mainArea = document.querySelector(".main-area");
 const dashTotalCards = document.getElementById("dashTotalCards");
 const dashCompletedCards = document.getElementById("dashCompletedCards");
 const dashOverdueCards = document.getElementById("dashOverdueCards");
@@ -226,14 +223,9 @@ function bindEvents() {
 
   on(lightBtn, "click", () => setTheme("light"));
   on(darkBtn, "click", () => setTheme("dark"));
-  on(sidebarToggleBtn, "click", toggleSidebar);
-
-  on(window, "resize", () => {
-    if (!isMobileViewport() && safeGetItem(SIDEBAR_KEY) == null) {
-      appShell.classList.remove("sidebar-collapsed");
-      updateSidebarToggleButton(false);
-    }
-  });
+  on(sidebarToggleBtn, "click", (e) => { e.stopPropagation(); toggleSidebar(); });
+  window.addEventListener("resize", handleResponsiveLayout);
+  on(mainArea, "click", () => { if (isMobileViewport() && appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar(); });
 
   on(loginOpenBtn, "click", openAuthModal);
   on(profileBtn, "click", openProfileModal);
@@ -636,10 +628,6 @@ function renderProjects() {
       renderProjects();
       renderBoard();
       closeProjectActionsMenu();
-      if (isMobileViewport()) {
-        appShell.classList.add("sidebar-collapsed");
-        updateSidebarToggleButton(true);
-      }
     });
 
     const editBtn = li.querySelector(".project-edit-btn");
@@ -1416,21 +1404,61 @@ function updateDashboard(project) {
 }
 
 
+function isMobileViewport() {
+  return window.innerWidth <= 980;
+}
+
+function openMobileSidebar() {
+  appShell.classList.add("mobile-sidebar-open");
+  appShell.classList.remove("sidebar-collapsed");
+  updateSidebarToggleButton(false);
+}
+
+function closeMobileSidebar() {
+  appShell.classList.remove("mobile-sidebar-open");
+  updateSidebarToggleButton(true);
+}
+
 function toggleSidebar() {
+  if (isMobileViewport()) {
+    if (appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar();
+    else openMobileSidebar();
+    return;
+  }
+
   const collapsed = appShell.classList.toggle("sidebar-collapsed");
   safeSetItem(SIDEBAR_KEY, collapsed ? "1" : "0");
   updateSidebarToggleButton(collapsed);
 }
 
 function applySavedSidebar() {
-  const savedValue = safeGetItem(SIDEBAR_KEY);
-  const collapsed = savedValue == null ? isMobileViewport() : savedValue === "1";
+  if (isMobileViewport()) {
+    appShell.classList.remove("sidebar-collapsed");
+    appShell.classList.remove("mobile-sidebar-open");
+    updateSidebarToggleButton(true);
+    return;
+  }
+
+  const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
+  appShell.classList.remove("mobile-sidebar-open");
   appShell.classList.toggle("sidebar-collapsed", collapsed);
   updateSidebarToggleButton(collapsed);
 }
 
+function handleResponsiveLayout() {
+  if (isMobileViewport()) {
+    appShell.classList.remove("sidebar-collapsed");
+    if (!appShell.classList.contains("mobile-sidebar-open")) updateSidebarToggleButton(true);
+  } else {
+    appShell.classList.remove("mobile-sidebar-open");
+    const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
+    appShell.classList.toggle("sidebar-collapsed", collapsed);
+    updateSidebarToggleButton(collapsed);
+  }
+}
+
 function updateSidebarToggleButton(collapsed) {
-  sidebarToggleBtn.textContent = collapsed ? "☷" : "☰";
+  sidebarToggleBtn.textContent = collapsed ? "☰" : "✕";
   sidebarToggleBtn.setAttribute("aria-label", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
   sidebarToggleBtn.setAttribute("title", collapsed ? "Mostrar menu lateral" : "Esconder menu lateral");
 }
