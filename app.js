@@ -30,6 +30,8 @@ const modalCloseTimers = new WeakMap();
 
 let supabase = null;
 let authUser = null;
+let authProfile = null;
+let tempParticipants = [];
 
 // DOM
 const projectList = document.getElementById("projectList");
@@ -72,6 +74,11 @@ const profileName = document.getElementById("profileName");
 const profileEmail = document.getElementById("profileEmail");
 const profileAvatar = document.getElementById("profileAvatar");
 const profileAvatarFallback = document.getElementById("profileAvatarFallback");
+const profilePhoneInput = document.getElementById("profilePhoneInput");
+const profileSectorInput = document.getElementById("profileSectorInput");
+const profileBioInput = document.getElementById("profileBioInput");
+const profileSaveStatus = document.getElementById("profileSaveStatus");
+const saveProfileBtn = document.getElementById("saveProfileBtn");
 const projectActionsMenu = document.getElementById("projectActionsMenu");
 const projectActionRenameBtn = document.getElementById("projectActionRenameBtn");
 const projectActionDeleteBtn = document.getElementById("projectActionDeleteBtn");
@@ -103,6 +110,11 @@ const cardOwnerInput = document.getElementById("cardOwnerInput");
 const cardDateInput = document.getElementById("cardDateInput");
 const cardLabelsInput = document.getElementById("cardLabelsInput");
 const cardParticipantsInput = document.getElementById("cardParticipantsInput");
+const participantSearchInput = document.getElementById("participantSearchInput");
+const participantSearchBtn = document.getElementById("participantSearchBtn");
+const participantSearchResults = document.getElementById("participantSearchResults");
+const participantSearchStatus = document.getElementById("participantSearchStatus");
+const selectedParticipantsList = document.getElementById("selectedParticipantsList");
 
 const newChecklistItemInput = document.getElementById("newChecklistItemInput");
 const addChecklistItemBtn = document.getElementById("addChecklistItemBtn");
@@ -380,15 +392,18 @@ async function initAuth() {
     if (error) throw error;
 
     await refreshAuthUser(data.session?.user || null);
+    await loadOwnProfile();
     maybeShowLoginWelcome(data.session?.user || null);
 
     supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         await refreshAuthUser(session.user);
+        await loadOwnProfile();
         closeAuthModal();
         maybeShowLoginWelcome(session.user);
       } else {
         authUser = null;
+        authProfile = null;
         try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch (_) {}
         updateAuthUI(null);
       }
@@ -409,9 +424,9 @@ function getIdentityData(user) {
 function getUserPresentation(user) {
   const metadata = user?.user_metadata || {};
   const identityData = getIdentityData(user);
-  const fullName = metadata.full_name || metadata.name || identityData.full_name || identityData.name || user?.email?.split("@")[0] || "Usuário";
-  const email = user?.email || metadata.email || identityData.email || "";
-  const avatarUrl = metadata.avatar_url || metadata.picture || identityData.avatar_url || identityData.picture || "";
+  const fullName = authProfile?.full_name || metadata.full_name || metadata.name || identityData.full_name || identityData.name || user?.email?.split("@")[0] || "Usuário";
+  const email = authProfile?.email || user?.email || metadata.email || identityData.email || "";
+  const avatarUrl = authProfile?.avatar_url || metadata.avatar_url || metadata.picture || identityData.avatar_url || identityData.picture || "";
   return { fullName, email, avatarUrl };
 }
 
@@ -428,8 +443,58 @@ async function refreshAuthUser(baseUser = null) {
     }
   }
   authUser = nextUser;
+  if (authUser) {
+    await syncProfileFromAuth(authUser);
+  } else {
+    authProfile = null;
+  }
   updateAuthUI(authUser);
   return authUser;
+}
+
+async function syncProfileFromAuth(user) {
+  if (!supabase || !user) return null;
+  const info = getUserPresentation(user);
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .upsert({
+        id: user.id,
+        full_name: info.fullName,
+        email: info.email,
+        avatar_url: info.avatarUrl || null,
+        provider: user.app_metadata?.provider || "google"
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    authProfile = data || null;
+    return authProfile;
+  } catch (error) {
+    console.warn("Não foi possível sincronizar o perfil no banco:", error);
+    return null;
+  }
+}
+
+async function loadOwnProfile() {
+  if (!supabase || !authUser) {
+    authProfile = null;
+    updateAuthUI(authUser);
+    return null;
+  }
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, avatar_url, phone, sector, bio, provider")
+      .eq("id", authUser.id)
+      .single();
+    if (error) throw error;
+    authProfile = data || null;
+  } catch (error) {
+    console.warn("Não foi possível carregar o perfil:", error);
+  }
+  updateAuthUI(authUser);
+  return authProfile;
 }
 
 function maybeShowLoginWelcome(user) {
@@ -510,6 +575,9 @@ function updateAuthUI(user) {
     profileAvatarFallback.textContent = initials;
     brandUserName.textContent = fullName;
     brandMark.textContent = initials;
+    if (profilePhoneInput) profilePhoneInput.value = authProfile?.phone || "";
+    if (profileSectorInput) profileSectorInput.value = authProfile?.sector || "";
+    if (profileBioInput) profileBioInput.value = authProfile?.bio || "";
 
     if (avatarUrl) {
       profileAvatar.src = avatarUrl;
@@ -530,6 +598,9 @@ function updateAuthUI(user) {
     profileName.textContent = "Visitante";
     profileEmail.textContent = "Faça login para conectar sua conta.";
     profileAvatarFallback.textContent = "KQ";
+    if (profilePhoneInput) profilePhoneInput.value = "";
+    if (profileSectorInput) profileSectorInput.value = "";
+    if (profileBioInput) profileBioInput.value = "";
     profileAvatar.removeAttribute("src");
     profileAvatar.classList.add("hidden");
     profileAvatarFallback.classList.remove("hidden");
@@ -552,6 +623,170 @@ function getInitials(name) {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join("") || "KQ";
+}
+
+function normalizeParticipant(participant) {
+  if (!participant) return null;
+  if (typeof participant === "string") {
+    const label = participant.trim();
+    if (!label) return null;
+    return { id: null, full_name: label, email: label, avatar_url: "", sector: "" };
+  }
+  const fullName = participant.full_name || participant.name || participant.email || "Participante";
+  return {
+    id: participant.id || participant.user_id || null,
+    full_name: fullName,
+    email: participant.email || "",
+    avatar_url: participant.avatar_url || "",
+    sector: participant.sector || ""
+  };
+}
+
+function normalizeParticipants(list) {
+  return (Array.isArray(list) ? list : []).map(normalizeParticipant).filter(Boolean);
+}
+
+function participantLabel(participant) {
+  const item = normalizeParticipant(participant);
+  if (!item) return "";
+  return item.full_name || item.email || "Participante";
+}
+
+function renderParticipantPill(participant, removable = false) {
+  const item = normalizeParticipant(participant);
+  if (!item) return "";
+  const initials = escapeHtml(getInitials(item.full_name));
+  const avatar = item.avatar_url
+    ? `<img class="participant-chip-avatar" src="${escapeHtml(item.avatar_url)}" alt="Avatar de ${escapeHtml(item.full_name)}">`
+    : `<span class="participant-chip-avatar-fallback">${initials}</span>`;
+  const sub = item.email && item.email !== item.full_name ? `<small>${escapeHtml(item.email)}</small>` : "";
+  const remove = removable ? `<button type="button" data-remove-participant="${escapeHtml(item.id || item.email || item.full_name)}">✕</button>` : "";
+  return `<span class="selected-participant-chip">${avatar}<span class="participant-search-text"><strong>${escapeHtml(item.full_name)}</strong>${sub}</span>${remove}</span>`;
+}
+
+function setParticipantStatus(message = "", type = "") {
+  if (!participantSearchStatus) return;
+  participantSearchStatus.textContent = message;
+  participantSearchStatus.classList.toggle("hidden", !message);
+  participantSearchStatus.classList.toggle("is-error", type === "error");
+  participantSearchStatus.classList.toggle("is-success", type === "success");
+}
+
+function renderSelectedParticipants() {
+  if (!selectedParticipantsList) return;
+  selectedParticipantsList.innerHTML = "";
+  if (!tempParticipants.length) {
+    selectedParticipantsList.innerHTML = `<div class="empty-state">Nenhum participante adicionado.</div>`;
+  } else {
+    selectedParticipantsList.innerHTML = tempParticipants.map((participant) => renderParticipantPill(participant, true)).join("");
+    selectedParticipantsList.querySelectorAll("button[data-remove-participant]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.getAttribute("data-remove-participant");
+        tempParticipants = tempParticipants.filter((participant) => (participant.id || participant.email || participant.full_name) !== key);
+        syncHiddenParticipantsInput();
+        renderSelectedParticipants();
+      });
+    });
+  }
+  syncHiddenParticipantsInput();
+}
+
+function syncHiddenParticipantsInput() {
+  if (!cardParticipantsInput) return;
+  cardParticipantsInput.value = tempParticipants.map((participant) => participant.email || participant.full_name).join(", ");
+}
+
+async function handleParticipantSearch() {
+  if (!requireAuth("buscar participantes")) return;
+  if (!supabase) {
+    setParticipantStatus("Configure o Supabase antes de buscar participantes.", "error");
+    return;
+  }
+  const term = participantSearchInput?.value?.trim();
+  if (!term) {
+    setParticipantStatus("Digite um nome ou email para buscar.", "error");
+    return;
+  }
+  setParticipantStatus("Buscando usuário cadastrado...", "success");
+  if (participantSearchResults) participantSearchResults.innerHTML = "";
+  try {
+    const { data, error } = await supabase.rpc("search_profiles", { search_text: term });
+    if (error) throw error;
+    const results = normalizeParticipants(data || []);
+    if (!results.length) {
+      setParticipantStatus("Nenhum usuário cadastrado encontrado com esse nome/email.", "error");
+      return;
+    }
+    setParticipantStatus(`${results.length} usuário(s) encontrado(s).`, "success");
+    participantSearchResults.innerHTML = results.map((participant) => {
+      const avatar = participant.avatar_url
+        ? `<img class="participant-search-avatar" src="${escapeHtml(participant.avatar_url)}" alt="Avatar de ${escapeHtml(participant.full_name)}">`
+        : `<span class="participant-search-avatar-fallback">${escapeHtml(getInitials(participant.full_name))}</span>`;
+      const sector = participant.sector ? ` · ${escapeHtml(participant.sector)}` : "";
+      return `
+        <div class="participant-search-item">
+          <div class="participant-search-item-copy">
+            ${avatar}
+            <div class="participant-search-text">
+              <strong>${escapeHtml(participant.full_name)}</strong>
+              <span>${escapeHtml(participant.email || "Sem email")}${sector}</span>
+            </div>
+          </div>
+          <button class="btn btn-soft btn-sm" type="button" data-add-participant="${escapeHtml(participant.id || participant.email || participant.full_name)}">Adicionar</button>
+        </div>`;
+    }).join("");
+    participantSearchResults.querySelectorAll("button[data-add-participant]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.getAttribute("data-add-participant");
+        const participant = results.find((item) => (item.id || item.email || item.full_name) === key);
+        if (!participant) return;
+        if (tempParticipants.some((item) => (item.id || item.email || item.full_name) === key)) {
+          setParticipantStatus("Esse participante já foi adicionado ao card.", "error");
+          return;
+        }
+        tempParticipants.push(participant);
+        renderSelectedParticipants();
+        setParticipantStatus(`${participant.full_name} foi adicionado ao card.`, "success");
+      });
+    });
+  } catch (error) {
+    console.error("Erro ao buscar participante:", error);
+    setParticipantStatus("Não foi possível consultar a base de usuários agora.", "error");
+  }
+}
+
+async function handleSaveProfile() {
+  if (!authUser || !supabase) return;
+  profileSaveStatus.textContent = "Salvando perfil...";
+  profileSaveStatus.classList.remove("hidden", "is-error");
+  profileSaveStatus.classList.remove("is-success");
+  try {
+    const payload = {
+      id: authUser.id,
+      full_name: getUserPresentation(authUser).fullName,
+      email: getUserPresentation(authUser).email,
+      avatar_url: getUserPresentation(authUser).avatarUrl || null,
+      phone: profilePhoneInput?.value?.trim() || null,
+      sector: profileSectorInput?.value?.trim() || null,
+      bio: profileBioInput?.value?.trim() || null,
+      provider: authUser.app_metadata?.provider || "google"
+    };
+    const { data, error } = await supabase
+      .from("profiles")
+      .upsert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+    authProfile = data || authProfile;
+    updateAuthUI(authUser);
+    profileSaveStatus.textContent = "Perfil salvo com sucesso.";
+    profileSaveStatus.classList.add("is-success");
+  } catch (error) {
+    console.error("Erro ao salvar perfil:", error);
+    profileSaveStatus.textContent = "Não foi possível salvar o perfil agora.";
+    profileSaveStatus.classList.add("is-error");
+  }
+  profileSaveStatus.classList.remove("hidden");
 }
 
 function openAuthModal() {
@@ -634,6 +869,14 @@ function loadState() {
 
 function saveState() {
   state.currentProjectId = currentProjectId;
+  state.projects.forEach((project) => {
+    Object.keys(project.columns || {}).forEach((columnId) => {
+      project.columns[columnId] = (project.columns[columnId] || []).map((card) => ({
+        ...card,
+        participants: normalizeParticipants(card.participants || [])
+      }));
+    });
+  });
   safeSetItem(STORAGE_KEY, JSON.stringify(state));
 }
 
@@ -852,9 +1095,9 @@ function renderColumn(columnId, cards) {
       : "";
 
     const commentsCount = (card.comments || []).length;
-    const participants = card.participants || [];
+    const participants = normalizeParticipants(card.participants || []);
     const participantsHtml = participants.length
-      ? `<div class="card-participants">${participants.slice(0, 3).map((participant) => `<span class="participant-chip">${escapeHtml(participant)}</span>`).join("")}${participants.length > 3 ? `<span class="participant-chip participant-chip-more">+${participants.length - 3}</span>` : ""}</div>`
+      ? `<div class="card-participants">${participants.slice(0, 3).map((participant) => `<span class="participant-chip">${escapeHtml(participantLabel(participant))}</span>`).join("")}${participants.length > 3 ? `<span class="participant-chip participant-chip-more">+${participants.length - 3}</span>` : ""}</div>`
       : "";
 
     cardEl.innerHTML = `
@@ -1001,6 +1244,10 @@ function openCardModal(mode, columnId, cardId = null) {
   currentEditingCardId = null;
   tempChecklist = [];
   tempComments = [];
+  tempParticipants = [];
+  if (participantSearchInput) participantSearchInput.value = "";
+  if (participantSearchResults) participantSearchResults.innerHTML = "";
+  setParticipantStatus("");
 
   if (mode === "create") {
     cardModalTitle.textContent = "Novo Card";
@@ -1011,6 +1258,7 @@ function openCardModal(mode, columnId, cardId = null) {
     cardOwnerInput.value = "";
     cardDateInput.value = "";
     cardLabelsInput.value = "";
+    tempParticipants = [];
     if (cardParticipantsInput) cardParticipantsInput.value = "";
   } else {
     const found = findCard(cardId);
@@ -1026,13 +1274,15 @@ function openCardModal(mode, columnId, cardId = null) {
     cardOwnerInput.value = found.card.owner || "";
     cardDateInput.value = found.card.date || "";
     cardLabelsInput.value = (found.card.labels || []).join(", ");
-    if (cardParticipantsInput) cardParticipantsInput.value = (found.card.participants || []).join(", ");
+    tempParticipants = normalizeParticipants(found.card.participants || []);
+    if (cardParticipantsInput) cardParticipantsInput.value = tempParticipants.map((item) => item.email || item.full_name).join(", ");
     tempChecklist = clone(found.card.checklist || []);
     tempComments = clone(found.card.comments || []);
   }
 
   renderEditChecklist();
   renderEditComments();
+  renderSelectedParticipants();
   openModal(cardModalOverlay);
 
   setTimeout(() => {
@@ -1067,10 +1317,7 @@ function handleSaveCard() {
       .split(",")
       .map((label) => label.trim())
       .filter(Boolean),
-    participants: (cardParticipantsInput?.value || "")
-      .split(",")
-      .map((participant) => participant.trim())
-      .filter(Boolean),
+    participants: clone(normalizeParticipants(tempParticipants)),
     checklist: clone(tempChecklist),
     comments: clone(tempComments),
     createdAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.createdAt || new Date().toISOString()) : new Date().toISOString()
@@ -1243,14 +1490,14 @@ function openViewCardModal(cardId) {
     viewCardLabels.innerHTML = `<div class="empty-state">Nenhuma label.</div>`;
   }
 
-  const participants = card.participants || [];
+  const participants = normalizeParticipants(card.participants || []);
   viewParticipantsCounter.textContent = `${participants.length}`;
   viewCardParticipants.innerHTML = "";
   if (participants.length) {
     participants.forEach((participant) => {
       const chip = document.createElement("span");
       chip.className = "participant-chip";
-      chip.textContent = participant;
+      chip.textContent = participantLabel(participant);
       viewCardParticipants.appendChild(chip);
     });
   } else {
