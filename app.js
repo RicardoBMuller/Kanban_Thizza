@@ -30,6 +30,10 @@ const modalCloseTimers = new WeakMap();
 let supabase = null;
 let authUser = null;
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 900px)").matches;
+}
+
 // DOM
 const projectList = document.getElementById("projectList");
 const searchInput = document.getElementById("searchInput");
@@ -223,6 +227,13 @@ function bindEvents() {
   on(lightBtn, "click", () => setTheme("light"));
   on(darkBtn, "click", () => setTheme("dark"));
   on(sidebarToggleBtn, "click", toggleSidebar);
+
+  on(window, "resize", () => {
+    if (!isMobileViewport() && safeGetItem(SIDEBAR_KEY) == null) {
+      appShell.classList.remove("sidebar-collapsed");
+      updateSidebarToggleButton(false);
+    }
+  });
 
   on(loginOpenBtn, "click", openAuthModal);
   on(profileBtn, "click", openProfileModal);
@@ -625,6 +636,10 @@ function renderProjects() {
       renderProjects();
       renderBoard();
       closeProjectActionsMenu();
+      if (isMobileViewport()) {
+        appShell.classList.add("sidebar-collapsed");
+        updateSidebarToggleButton(true);
+      }
     });
 
     const editBtn = li.querySelector(".project-edit-btn");
@@ -926,7 +941,7 @@ function openCardModal(mode, columnId, cardId = null) {
     cardOwnerInput.value = "";
     cardDateInput.value = "";
     cardLabelsInput.value = "";
-    cardParticipantsInput.value = "";
+    if (cardParticipantsInput) cardParticipantsInput.value = "";
   } else {
     const found = findCard(cardId);
     if (!found) return;
@@ -941,7 +956,7 @@ function openCardModal(mode, columnId, cardId = null) {
     cardOwnerInput.value = found.card.owner || "";
     cardDateInput.value = found.card.date || "";
     cardLabelsInput.value = (found.card.labels || []).join(", ");
-    cardParticipantsInput.value = (found.card.participants || []).join(", ");
+    if (cardParticipantsInput) cardParticipantsInput.value = (found.card.participants || []).join(", ");
     tempChecklist = clone(found.card.checklist || []);
     tempComments = clone(found.card.comments || []);
   }
@@ -982,7 +997,7 @@ function handleSaveCard() {
       .split(",")
       .map((label) => label.trim())
       .filter(Boolean),
-    participants: cardParticipantsInput.value
+    participants: (cardParticipantsInput?.value || "")
       .split(",")
       .map((participant) => participant.trim())
       .filter(Boolean),
@@ -1408,7 +1423,8 @@ function toggleSidebar() {
 }
 
 function applySavedSidebar() {
-  const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
+  const savedValue = safeGetItem(SIDEBAR_KEY);
+  const collapsed = savedValue == null ? isMobileViewport() : savedValue === "1";
   appShell.classList.toggle("sidebar-collapsed", collapsed);
   updateSidebarToggleButton(collapsed);
 }
