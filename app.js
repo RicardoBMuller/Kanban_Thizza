@@ -490,6 +490,7 @@ function fillProfileForm() {
   profileBioInput.value = profileRecord?.bio || "";
 }
 
+// Correção Salvar Perfil: Reset de estado visual para permitir novas alterações
 async function handleSaveProfile() {
   if (!requireAuth("salvar o perfil")) return;
   if (!supabase || !authUser) return;
@@ -510,27 +511,29 @@ async function handleSaveProfile() {
     console.error("Erro ao salvar perfil:", error);
     return;
   }
+  
   profileRecord = data;
   updateAuthUI(authUser);
   
-  // Feedback visual dentro do próprio modal de perfil
+  // Feedback visual dentro do próprio modal de perfil com reset
   const originalText = saveProfileBtn.textContent;
   saveProfileBtn.textContent = "✅ Salvo!";
-  saveProfileBtn.classList.add("btn-success");
+  saveProfileBtn.disabled = true; // Impede duplo clique rápido
+  
   setTimeout(() => {
     saveProfileBtn.textContent = originalText;
-    saveProfileBtn.classList.remove("btn-success");
+    saveProfileBtn.disabled = false; // Reabilita para novas alterações
   }, 2500);
 }
 
-// Funções para Modais de Sistema (Logout)
+// Correção Logout: Confirmação visual integrada e Fadeout de despedida
 function showSystemConfirmModal(title, message, onConfirm) {
   projectModalTitle.textContent = title;
   const modalBody = projectModalOverlay.querySelector(".modal-body");
   const originalContent = modalBody.innerHTML;
   modalBody.innerHTML = `<p class="view-text">${message}</p>`;
   
-  // Clone para remover eventos antigos (como o de salvar projeto)
+  // Limpeza profunda de eventos para evitar erros de validação de projeto
   const newSaveBtn = saveProjectBtn.cloneNode(true);
   const newCancelBtn = cancelProjectBtn.cloneNode(true);
   saveProjectBtn.parentNode.replaceChild(newSaveBtn, saveProjectBtn);
@@ -555,11 +558,15 @@ async function handleLogout() {
   if (!supabase) return;
   showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
     const { fullName, avatarUrl } = getUserPresentation(authUser);
+    closeProfileModal();
+    
+    // Animação de saída
     showGoodbyeSplash(fullName, avatarUrl);
+    
     setTimeout(async () => {
       await supabase.auth.signOut();
       window.location.reload();
-    }, 2800);
+    }, 3000);
   });
 }
 
@@ -576,10 +583,13 @@ function showGoodbyeSplash(fullName, avatarUrl) {
       ${mark}
       <div class="intro-splash-copy">
         <strong>Até logo, ${escapeHtml(fullName)}!</strong>
-        <span>Sua sessão foi encerrada com segurança. Volte logo!</span>
+        <span>Sua sessão foi encerrada. O Kanban Quest voltará ao início.</span>
       </div>
     </div>`;
   document.body.appendChild(splash);
+  
+  // Efeito de Fadeout solicitado
+  setTimeout(() => splash.classList.add("is-hidden"), 2200);
 }
 
 async function loadCloudData() {
@@ -1624,7 +1634,7 @@ function renderEditChecklist() {
       <button class="btn btn-soft btn-sm" type="button">Remover</button>
     `;
 
-    const checkbox = row.querySelector('input[type="checkbox"]');
+    const checkbox = row.querySelector('input[type=\"checkbox\"]');
     const removeBtn = row.querySelector("button");
 
     checkbox.addEventListener("change", () => {
