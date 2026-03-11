@@ -2,8 +2,8 @@ document.addEventListener("DOMContentLoaded", () => {
 // ============================================================
 // CONFIGURAÇÃO — preencha com suas credenciais do Supabase
 // ============================================================
-const SUPABASE_URL  = "SUPABASE_URL";
-const SUPABASE_ANON_KEY = "SUPABASE_KEY";
+const SUPABASE_URL  = "https://ymskzxssjnvhsqhymzbq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inltc2t6eHNzam52aHNxaHltemJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwOTAyMzYsImV4cCI6MjA4ODY2NjIzNn0.nsXZ62padaByJNZqJogVyUxW8hqD0oxzl70p2D4sfOs";
 
 // ============================================================
 // CONSTANTES
