@@ -1878,4 +1878,570 @@ function escapeHtml(text) {
     .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
 
+
+// ================================================================
+// ① NOTIFICATIONS SYSTEM
+// ================================================================
+const NOTIF_SEEN_KEY = "kanban_notif_seen_v1";
+let notifPanelOpen = false;
+let notifItems = []; // [{id, type, icon, title, body, time, cardId}]
+
+const notifBtn       = document.getElementById("notifBtn");
+const notifBadge     = document.getElementById("notifBadge");
+const notifPanel     = document.getElementById("notifPanel");
+const notifList      = document.getElementById("notifList");
+const notifMarkAllBtn = document.getElementById("notifMarkAllBtn");
+const openChatBtn    = document.getElementById("openChatBtn");
+const globalUnreadBadge = document.getElementById("globalUnreadBadge");
+
+on(notifBtn, "click", e => { e.stopPropagation(); toggleNotifPanel(); });
+on(notifMarkAllBtn, "click", () => { markAllNotifRead(); });
+document.addEventListener("click", e => {
+  if (notifPanelOpen && !notifPanel.contains(e.target) && e.target !== notifBtn) closeNotifPanel();
+});
+
+function toggleNotifPanel() {
+  notifPanelOpen ? closeNotifPanel() : openNotifPanel();
+}
+function openNotifPanel() {
+  notifPanel.classList.add("is-open");
+  notifPanel.setAttribute("aria-hidden", "false");
+  notifPanelOpen = true;
+}
+function closeNotifPanel() {
+  notifPanel.classList.remove("is-open");
+  notifPanel.setAttribute("aria-hidden", "true");
+  notifPanelOpen = false;
+}
+
+function getSeenNotifIds() {
+  try { return new Set(JSON.parse(safeGetItem(NOTIF_SEEN_KEY) || "[]")); } catch { return new Set(); }
+}
+function markSeenNotifIds(ids) {
+  safeSetItem(NOTIF_SEEN_KEY, JSON.stringify([...ids]));
+}
+function markAllNotifRead() {
+  const seen = getSeenNotifIds();
+  notifItems.forEach(n => seen.add(n.id));
+  markSeenNotifIds(seen);
+  renderNotifications();
+  closeNotifPanel();
+}
+
+function buildNotifications() {
+  const items = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+
+  // Own cards: overdue + due today/tomorrow
+  state.projects.forEach(project => {
+    Object.entries(project.columns || {}).forEach(([colKey, cards]) => {
+      (cards || []).forEach(card => {
+        if (!card.date || colKey === "done") return;
+        const deadline = new Date(`${card.date}T00:00:00`);
+        const id = `overdue_${card.id}`;
+        if (deadline < today) {
+          items.push({ id, type: "overdue", icon: "⚠️", title: "Card atrasado", body: `"${card.title}" passou do prazo (${formatDate(card.date)})`, time: deadline.toISOString(), cardId: card.id });
+        } else if (deadline.getTime() === today.getTime()) {
+          items.push({ id: `today_${card.id}`, type: "due_today", icon: "📅", title: "Vence hoje", body: `"${card.title}" vence hoje!`, time: deadline.toISOString(), cardId: card.id });
+        } else if (deadline.getTime() === tomorrow.getTime()) {
+          items.push({ id: `tomorrow_${card.id}`, type: "due_soon", icon: "🕐", title: "Vence amanhã", body: `"${card.title}" vence amanhã.`, time: deadline.toISOString(), cardId: card.id });
+        }
+      });
+    });
+  });
+
+  // Shared cards: you were added as participant
+  sharedCardsState.forEach(sc => {
+    items.push({
+      id: `shared_${sc.card.id}`,
+      type: "shared",
+      icon: "🤝",
+      title: "Card compartilhado",
+      body: `Você foi adicionado ao card "${sc.card.title}" (projeto: ${sc.projectName})`,
+      time: sc.card.createdAt,
+      cardId: sc.card.id
+    });
+  });
+
+  // Sort by time desc
+  items.sort((a, b) => new Date(b.time) - new Date(a.time));
+  notifItems = items;
+}
+
+function renderNotifications() {
+  buildNotifications();
+  const seen = getSeenNotifIds();
+  const unread = notifItems.filter(n => !seen.has(n.id));
+
+  // Badge
+  if (unread.length > 0) {
+    notifBadge.textContent = unread.length > 99 ? "99+" : unread.length;
+    notifBadge.classList.remove("hidden");
+  } else {
+    notifBadge.classList.add("hidden");
+  }
+
+  // List
+  if (!notifItems.length) {
+    notifList.innerHTML = `<div class="notif-empty">Nenhuma notificação.</div>`;
+    return;
+  }
+
+  notifList.innerHTML = "";
+  notifItems.forEach(n => {
+    const isUnread = !seen.has(n.id);
+    const row = document.createElement("div");
+    row.className = `notif-item${isUnread ? " is-unread" : ""}`;
+    row.innerHTML = `
+      <span class="notif-item-icon">${n.icon}</span>
+      <div class="notif-item-body">
+        <strong>${escapeHtml(n.title)}</strong>
+        <span>${escapeHtml(n.body)}</span>
+      </div>
+      <span class="notif-item-time">${timeAgo(n.time)}</span>`;
+    row.addEventListener("click", () => {
+      // Mark as read
+      seen.add(n.id);
+      markSeenNotifIds(seen);
+      closeNotifPanel();
+      renderNotifications();
+      // Navigate to card if possible
+      if (n.cardId) {
+        const found = findCard(n.cardId) || (findSharedCard(n.cardId) ? { card: findSharedCard(n.cardId).card, columnId: findSharedCard(n.cardId).columnId } : null);
+        if (found) setTimeout(() => openViewCardModal(n.cardId), 80);
+      }
+    });
+    notifList.appendChild(row);
+  });
+}
+
+function timeAgo(iso) {
+  if (!iso) return "";
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "agora";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+// ================================================================
+// ② USER BIO MODAL
+// ================================================================
+const bioModalOverlay = document.getElementById("bioModalOverlay");
+const closeBioModalBtn = document.getElementById("closeBioModalBtn");
+const closeBioFooterBtn = document.getElementById("closeBioFooterBtn");
+const bioChatBtn = document.getElementById("bioChatBtn");
+const bioModalBody = document.getElementById("bioModalBody");
+let currentBioUserId = null;
+
+on(closeBioModalBtn,  "click", closeBioModal);
+on(closeBioFooterBtn, "click", closeBioModal);
+on(bioModalOverlay,   "click", e => { if (e.target === bioModalOverlay) closeBioModal(); });
+on(bioChatBtn, "click", () => {
+  if (!currentBioUserId) return;
+  closeBioModal();
+  openChatWithUser(currentBioUserId);
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !bioModalOverlay.classList.contains("hidden")) closeBioModal(); });
+
+async function openUserBioModal(userId) {
+  if (!supabase || !userId) return;
+  currentBioUserId = userId;
+  bioModalBody.innerHTML = `<div class="chat-loading">Carregando perfil...</div>`;
+  openModal(bioModalOverlay);
+
+  const { data, error } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
+  if (error || !data) {
+    bioModalBody.innerHTML = `<div class="notif-empty">Perfil não encontrado.</div>`;
+    return;
+  }
+
+  const initials = getInitials(data.full_name || "?");
+  const isSelf = authUser && userId === authUser.id;
+
+  bioModalBody.innerHTML = `
+    <div class="bio-user-hero">
+      ${data.avatar_url
+        ? `<img class="bio-avatar" src="${escapeHtml(data.avatar_url)}" alt="${escapeHtml(data.full_name || "")}"/>`
+        : `<div class="bio-avatar-fallback">${escapeHtml(initials)}</div>`}
+      <div class="bio-user-info">
+        <strong>${escapeHtml(data.full_name || "Sem nome")}</strong>
+        <span>${escapeHtml(data.email || "")}</span>
+      </div>
+    </div>
+    <div class="bio-detail-grid">
+      <div class="bio-detail-item">
+        <label>📞 Telefone</label>
+        <span>${escapeHtml(data.phone || "—")}</span>
+      </div>
+      <div class="bio-detail-item">
+        <label>🏢 Setor</label>
+        <span>${escapeHtml(data.sector || "—")}</span>
+      </div>
+    </div>
+    <div>
+      <label class="field-label" style="margin-bottom:6px;display:block">📝 Bio</label>
+      <div class="bio-text-block ${!data.bio ? "bio-text-empty" : ""}">${escapeHtml(data.bio || "Nenhuma bio preenchida.")}</div>
+    </div>`;
+
+  // Hide chat button for own profile
+  bioChatBtn.style.display = isSelf ? "none" : "";
+}
+
+function closeBioModal() { closeModal(bioModalOverlay); }
+
+// ================================================================
+// ③ INTERNAL CHAT
+// ================================================================
+const chatPanel      = document.getElementById("chatPanel");
+const chatCloseBtn   = document.getElementById("chatCloseBtn");
+const chatSearchInput = document.getElementById("chatSearchInput");
+const chatUserResults = document.getElementById("chatUserResults");
+const chatConvList   = document.getElementById("chatConvList");
+const chatMainHeader = document.getElementById("chatMainHeader");
+const chatMessages   = document.getElementById("chatMessages");
+const chatInputRow   = document.getElementById("chatInputRow");
+const chatMessageInput = document.getElementById("chatMessageInput");
+const chatSendBtn    = document.getElementById("chatSendBtn");
+
+let chatOpen = false;
+let activeChatUserId   = null;
+let activeChatUserName = "";
+let chatConversations  = []; // [{userId, name, email, avatarUrl, lastMsg, lastTime, unread}]
+let chatPollTimer      = null;
+let chatSearchTimer    = null;
+let chatUserSearchResults = [];
+
+on(openChatBtn,  "click", () => { if (!requireAuth("usar o chat")) return; openChatPanel(); });
+on(chatCloseBtn, "click", closeChatPanel);
+on(chatPanel, "click", e => { if (e.target === chatPanel) closeChatPanel(); });
+on(chatSendBtn, "click", handleSendMessage);
+on(chatMessageInput, "keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }
+});
+on(chatSearchInput, "input", () => {
+  clearTimeout(chatSearchTimer);
+  const term = chatSearchInput.value.trim();
+  if (!term) { chatUserResults.style.display = "none"; return; }
+  chatSearchTimer = setTimeout(() => searchChatUsers(term), 300);
+});
+document.addEventListener("click", e => {
+  if (!chatUserResults.contains(e.target) && e.target !== chatSearchInput) {
+    chatUserResults.style.display = "none";
+  }
+});
+
+function openChatPanel(userId = null, userName = "") {
+  chatPanel.classList.add("is-open");
+  chatPanel.setAttribute("aria-hidden", "false");
+  chatOpen = true;
+  loadConversations().then(() => {
+    if (userId) openConversation(userId, userName);
+  });
+  startChatPoll();
+}
+
+function closeChatPanel() {
+  chatPanel.classList.remove("is-open");
+  chatPanel.setAttribute("aria-hidden", "true");
+  chatOpen = false;
+  stopChatPoll();
+}
+
+function openChatWithUser(userId) {
+  if (!requireAuth("usar o chat")) return;
+  // Find name from conversations or shared
+  let name = "";
+  const conv = chatConversations.find(c => c.userId === userId);
+  if (conv) name = conv.name;
+  openChatPanel(userId, name);
+}
+
+async function searchChatUsers(term) {
+  if (!supabase || !authUser) return;
+  let data = null;
+  const rpc = await supabase.rpc("search_profiles", { search_term: term });
+  if (!rpc.error) data = rpc.data;
+  else {
+    const fb = await supabase.from("profiles").select("user_id,full_name,email,avatar_url")
+      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`).limit(8);
+    data = fb.data;
+  }
+  chatUserSearchResults = (data || []).filter(u => u.user_id !== authUser.id);
+  renderChatUserResults();
+}
+
+function renderChatUserResults() {
+  if (!chatUserSearchResults.length) { chatUserResults.style.display = "none"; return; }
+  chatUserResults.innerHTML = "";
+  chatUserResults.style.display = "block";
+  chatUserSearchResults.forEach(u => {
+    const initials = getInitials(u.full_name || u.email || "?");
+    const row = document.createElement("div");
+    row.className = "chat-user-result-item";
+    row.innerHTML = `
+      ${u.avatar_url ? `<img src="${escapeHtml(u.avatar_url)}" alt="${escapeHtml(u.full_name||"")}">` : `<div class="chat-avatar-sm">${escapeHtml(initials)}</div>`}
+      <span>${escapeHtml(u.full_name || u.email || "Usuário")}</span>`;
+    row.addEventListener("click", () => {
+      chatSearchInput.value = "";
+      chatUserResults.style.display = "none";
+      openConversation(u.user_id, u.full_name || u.email || "Usuário");
+    });
+    chatUserResults.appendChild(row);
+  });
+}
+
+async function loadConversations() {
+  if (!supabase || !authUser) { chatConvList.innerHTML = `<div class="notif-empty">Faça login para ver mensagens.</div>`; return; }
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .or(`from_user_id.eq.${authUser.id},to_user_id.eq.${authUser.id}`)
+    .order("created_at", { ascending: false });
+
+  if (error) { console.error("Erro ao carregar conversas:", error); return; }
+
+  // Group by conversation partner
+  const convMap = new Map();
+  (data || []).forEach(msg => {
+    const partnerId = msg.from_user_id === authUser.id ? msg.to_user_id : msg.from_user_id;
+    if (!convMap.has(partnerId)) {
+      convMap.set(partnerId, { lastMsg: msg.text, lastTime: msg.created_at, unread: 0, userId: partnerId });
+    }
+    if (msg.to_user_id === authUser.id && !msg.read) convMap.get(partnerId).unread++;
+  });
+
+  // Fetch profile info for each partner
+  const partnerIds = [...convMap.keys()];
+  let profiles = {};
+  if (partnerIds.length) {
+    const { data: profs } = await supabase.from("profiles").select("user_id,full_name,email,avatar_url").in("user_id", partnerIds);
+    (profs || []).forEach(p => { profiles[p.user_id] = p; });
+  }
+
+  chatConversations = [...convMap.entries()].map(([uid, conv]) => {
+    const prof = profiles[uid] || {};
+    return { ...conv, name: prof.full_name || prof.email || uid, email: prof.email || "", avatarUrl: prof.avatar_url || "" };
+  }).sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime));
+
+  renderConvList();
+  updateGlobalUnreadBadge();
+}
+
+function renderConvList() {
+  if (!chatConversations.length) {
+    chatConvList.innerHTML = `<div class="notif-empty" style="padding:20px 14px;font-size:12px;">Nenhuma conversa. Busque um usuário acima para começar.</div>`;
+    return;
+  }
+  chatConvList.innerHTML = "";
+  chatConversations.forEach(conv => {
+    const initials = getInitials(conv.name);
+    const isActive = conv.userId === activeChatUserId;
+    const row = document.createElement("div");
+    row.className = `chat-conv-item${isActive ? " is-active" : ""}`;
+    row.innerHTML = `
+      ${conv.avatarUrl ? `<img src="${escapeHtml(conv.avatarUrl)}" alt="${escapeHtml(conv.name)}">` : `<div class="chat-conv-avatar">${escapeHtml(initials)}</div>`}
+      <div class="chat-conv-copy">
+        <strong>${escapeHtml(conv.name)}</strong>
+        <span>${escapeHtml(truncate(conv.lastMsg || "", 36))}</span>
+      </div>
+      ${conv.unread > 0 ? `<span class="chat-conv-unread">${conv.unread}</span>` : ""}`;
+    row.addEventListener("click", () => openConversation(conv.userId, conv.name));
+    chatConvList.appendChild(row);
+  });
+}
+
+async function openConversation(userId, userName) {
+  activeChatUserId   = userId;
+  activeChatUserName = userName;
+
+  // Update header
+  const conv = chatConversations.find(c => c.userId === userId);
+  const initials = getInitials(userName);
+  const avatarUrl = conv?.avatarUrl || "";
+  chatMainHeader.innerHTML = `
+    ${avatarUrl ? `<img src="${escapeHtml(avatarUrl)}" class="chat-main-avatar" alt="${escapeHtml(userName)}">` : `<div class="chat-main-avatar">${escapeHtml(initials)}</div>`}
+    <div class="chat-main-info">
+      <strong>${escapeHtml(userName)}</strong>
+      <span>${escapeHtml(conv?.email || "")}</span>
+    </div>
+    <button id="chatCloseBtn" class="chat-close-btn" type="button">✕</button>`;
+  chatMainHeader.querySelector("#chatCloseBtn").addEventListener("click", closeChatPanel);
+
+  chatInputRow.style.display = "";
+  chatMessages.innerHTML = `<div class="chat-loading">Carregando...</div>`;
+
+  renderConvList(); // highlight active
+  await fetchAndRenderMessages();
+
+  // Mark messages as read
+  if (supabase && authUser) {
+    supabase.from("messages").update({ read: true })
+      .eq("from_user_id", userId).eq("to_user_id", authUser.id).eq("read", false)
+      .then(() => { loadConversations(); });
+  }
+  chatMessageInput.focus();
+}
+
+async function fetchAndRenderMessages() {
+  if (!supabase || !authUser || !activeChatUserId) return;
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .or(`and(from_user_id.eq.${authUser.id},to_user_id.eq.${activeChatUserId}),and(from_user_id.eq.${activeChatUserId},to_user_id.eq.${authUser.id})`)
+    .order("created_at", { ascending: true });
+
+  if (error) { console.error("Erro mensagens:", error); return; }
+
+  const msgs = data || [];
+  if (!msgs.length) {
+    chatMessages.innerHTML = `<div class="chat-empty-state"><span>👋</span>Inicie uma conversa!</div>`;
+    return;
+  }
+
+  chatMessages.innerHTML = "";
+  let lastDate = "";
+  msgs.forEach(msg => {
+    const dateStr = new Date(msg.created_at).toLocaleDateString("pt-BR");
+    if (dateStr !== lastDate) {
+      const div = document.createElement("div");
+      div.className = "chat-date-divider";
+      div.textContent = dateStr;
+      chatMessages.appendChild(div);
+      lastDate = dateStr;
+    }
+    const isMine = msg.from_user_id === authUser.id;
+    const bubble = document.createElement("div");
+    bubble.className = `chat-msg ${isMine ? "is-mine" : "is-theirs"}`;
+    bubble.innerHTML = `
+      <div class="chat-bubble">${escapeHtml(msg.text)}</div>
+      <div class="chat-msg-meta">${new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>`;
+    chatMessages.appendChild(bubble);
+  });
+
+  // Scroll to bottom
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function handleSendMessage() {
+  const text = chatMessageInput.value.trim();
+  if (!text || !activeChatUserId || !supabase || !authUser) return;
+
+  chatMessageInput.value = "";
+  chatMessageInput.style.height = "auto";
+
+  const { error } = await supabase.from("messages").insert({
+    from_user_id: authUser.id,
+    to_user_id: activeChatUserId,
+    text,
+    read: false
+  });
+
+  if (error) { console.error("Erro ao enviar mensagem:", error); return; }
+  await fetchAndRenderMessages();
+  await loadConversations();
+}
+
+function startChatPoll() {
+  stopChatPoll();
+  chatPollTimer = setInterval(async () => {
+    if (activeChatUserId) await fetchAndRenderMessages();
+    await loadConversations();
+  }, 5000);
+}
+
+function stopChatPoll() {
+  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+}
+
+function updateGlobalUnreadBadge() {
+  const total = chatConversations.reduce((acc, c) => acc + (c.unread || 0), 0);
+  if (total > 0) {
+    globalUnreadBadge.textContent = total > 99 ? "99+" : total;
+    globalUnreadBadge.classList.remove("hidden");
+  } else {
+    globalUnreadBadge.classList.add("hidden");
+  }
+}
+
+// Auto-resize chat textarea
+chatMessageInput?.addEventListener("input", function() {
+  this.style.height = "auto";
+  this.style.height = Math.min(this.scrollHeight, 100) + "px";
+});
+
+// ================================================================
+// PATCH: renderProjects — also calls renderNotifications after shared cards load
+// ================================================================
+const _origRenderProjects = renderProjects;
+// We patch after auth loads — renderNotifications is called in updateAuthUI via renderBoard
+
+// ================================================================
+// PATCH: openViewCardModal — participant chips open bio modal
+// ================================================================
+// This is injected via renderParticipantChips called inside openViewCardModal
+// We hook into the viewCardParticipants container after render
+
+const _origOpenViewCardModal = openViewCardModal;
+function openViewCardModal(cardId) {
+  _origOpenViewCardModal(cardId);
+  // After modal is rendered, make participant chips clickable for bio
+  setTimeout(() => patchParticipantChipsForBio(), 60);
+}
+
+function patchParticipantChipsForBio() {
+  const container = document.getElementById("viewCardParticipants");
+  if (!container) return;
+  container.querySelectorAll(".participant-chip").forEach(chip => {
+    if (chip.dataset.bioPatched) return;
+    chip.dataset.bioPatched = "1";
+    chip.classList.add("is-clickable-bio");
+    chip.title = "Ver perfil";
+    // We need user_id — find by name match in sharedCardsState or tempParticipants
+    const name = chip.textContent.trim();
+    chip.addEventListener("click", () => findAndOpenBioByName(name));
+  });
+}
+
+async function findAndOpenBioByName(displayName) {
+  if (!supabase) return;
+  // Try to find in profiles
+  const { data } = await supabase.from("profiles")
+    .select("user_id,full_name,email,avatar_url")
+    .ilike("full_name", `%${displayName.split(" ")[0]}%`)
+    .limit(5);
+  if (data?.length === 1) {
+    openUserBioModal(data[0].user_id);
+  } else if (data?.length > 1) {
+    // Find closest match
+    const match = data.find(p => (p.full_name || "").toLowerCase() === displayName.toLowerCase()) || data[0];
+    openUserBioModal(match.user_id);
+  }
+}
+
+// ================================================================
+// PATCH: handleSessionUser / updateAuthUI — trigger notifications
+// ================================================================
+const _origUpdateAuthUI = updateAuthUI;
+function updateAuthUI(user) {
+  _origUpdateAuthUI(user);
+  // Render notifications after state is ready
+  setTimeout(renderNotifications, 200);
+  // Load conversations badge
+  if (user && supabase) setTimeout(loadConversations, 500);
+}
+
+// Patch loadSharedCards to also update notifications
+const _origLoadSharedCards = loadSharedCards;
+async function loadSharedCards() {
+  await _origLoadSharedCards();
+  setTimeout(renderNotifications, 100);
+}
+
 }); // end DOMContentLoaded
+

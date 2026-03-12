@@ -6,10 +6,7 @@
   <title>Kanban Quest</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet"
-  />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <script>
     try {
@@ -31,6 +28,7 @@
       </div>
     </div>
   </div>
+
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand-card">
@@ -50,17 +48,22 @@
         <ul id="projectList" class="project-list"></ul>
       </section>
 
+      <!-- ── Mensagens nav ── -->
       <section class="panel">
-        <div class="panel-header">
-          <span>Busca</span>
-        </div>
+        <div class="panel-header"><span>Mensagens</span></div>
+        <button id="openChatBtn" class="messages-nav-btn" type="button">
+          💬 Abrir mensagens
+          <span id="globalUnreadBadge" class="msg-unread-badge hidden">0</span>
+        </button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header"><span>Busca</span></div>
         <input id="searchInput" class="input" type="text" placeholder="Buscar cards, labels, comentários..." />
       </section>
 
       <section class="panel dashboard-panel">
-        <div class="panel-header">
-          <span>Dashboard</span>
-        </div>
+        <div class="panel-header"><span>Dashboard</span></div>
         <div class="dashboard-stack">
           <article class="dashboard-stat dashboard-stat-primary">
             <div class="dashboard-stat-icon">🗂️</div>
@@ -69,7 +72,6 @@
               <strong id="dashTotalCards">0</strong>
             </div>
           </article>
-
           <article class="dashboard-stat dashboard-stat-success">
             <div class="dashboard-stat-icon">✅</div>
             <div class="dashboard-stat-copy">
@@ -77,7 +79,6 @@
               <strong id="dashCompletedCards">0</strong>
             </div>
           </article>
-
           <article class="dashboard-stat dashboard-stat-warning">
             <div class="dashboard-stat-icon">⏳</div>
             <div class="dashboard-stat-copy">
@@ -85,7 +86,6 @@
               <strong id="dashOverdueCards">0</strong>
             </div>
           </article>
-
           <article class="dashboard-stat dashboard-stat-accent">
             <div class="dashboard-stat-icon">📋</div>
             <div class="dashboard-stat-copy">
@@ -97,9 +97,7 @@
       </section>
 
       <section class="panel">
-        <div class="panel-header">
-          <span>Tema</span>
-        </div>
+        <div class="panel-header"><span>Tema</span></div>
         <div class="theme-switch">
           <button id="lightBtn" class="btn btn-soft theme-btn">Claro</button>
           <button id="darkBtn" class="btn btn-soft theme-btn active">Escuro</button>
@@ -117,6 +115,12 @@
         </div>
 
         <div class="topbar-actions">
+          <!-- ── Notification Bell ── -->
+          <button id="notifBtn" class="notif-btn" type="button" aria-label="Notificações" title="Notificações">
+            🔔
+            <span id="notifBadge" class="notif-badge hidden">0</span>
+          </button>
+
           <button id="loginOpenBtn" class="btn btn-google-login" type="button">
             <span class="google-mark" aria-hidden="true">
               <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -136,32 +140,21 @@
       <section class="board">
         <div class="column" data-col="todo">
           <div class="column-header">
-            <div>
-              <h3>Pendente</h3>
-              <span class="column-count" id="count-todo">0</span>
-            </div>
+            <div><h3>Pendente</h3><span class="column-count" id="count-todo">0</span></div>
             <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
           </div>
           <div class="cards"></div>
         </div>
-
         <div class="column" data-col="doing">
           <div class="column-header">
-            <div>
-              <h3>Em Progresso</h3>
-              <span class="column-count" id="count-doing">0</span>
-            </div>
+            <div><h3>Em Progresso</h3><span class="column-count" id="count-doing">0</span></div>
             <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
           </div>
           <div class="cards"></div>
         </div>
-
         <div class="column" data-col="done">
           <div class="column-header">
-            <div>
-              <h3>Concluído</h3>
-              <span class="column-count" id="count-done">0</span>
-            </div>
+            <div><h3>Concluído</h3><span class="column-count" id="count-done">0</span></div>
             <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
           </div>
           <div class="cards"></div>
@@ -170,25 +163,34 @@
     </main>
   </div>
 
+  <!-- ── Notification Panel (dropdown) ──────────────────────── -->
+  <div id="notifPanel" class="notif-panel" aria-hidden="true">
+    <div class="notif-panel-header">
+      <h4>🔔 Notificações</h4>
+      <button id="notifMarkAllBtn" class="notif-mark-all-btn" type="button">Marcar todas como lidas</button>
+    </div>
+    <div id="notifList" class="notif-list">
+      <div class="notif-empty">Nenhuma notificação.</div>
+    </div>
+  </div>
 
+  <!-- ── Project actions menu ───────────────────────────────── -->
   <div id="projectActionsMenu" class="project-actions-menu hidden" aria-hidden="true">
     <button id="projectActionRenameBtn" class="project-actions-item" type="button">✏️ Renomear projeto</button>
     <button id="projectActionDeleteBtn" class="project-actions-item danger" type="button">🗑️ Excluir projeto</button>
   </div>
 
-  <!-- Modal de Projeto -->
+  <!-- ── Modal Projeto ──────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="projectModalOverlay" aria-hidden="true">
     <div class="modal-card modal-sm">
       <div class="modal-header">
         <h3 id="projectModalTitle">Novo Projeto</h3>
         <button class="icon-btn" id="closeProjectModalBtn" type="button">✕</button>
       </div>
-
       <div class="modal-body">
         <label class="field-label" for="projectNameInput">Nome do projeto</label>
         <input id="projectNameInput" class="input" type="text" placeholder="Ex.: ALEMS125" />
       </div>
-
       <div class="modal-footer">
         <button id="cancelProjectBtn" class="btn btn-soft" type="button">Cancelar</button>
         <button id="saveProjectBtn" class="btn btn-primary" type="button">Salvar</button>
@@ -196,43 +198,37 @@
     </div>
   </div>
 
-  <!-- Modal de edição do card -->
+  <!-- ── Modal edição do card ───────────────────────────────── -->
   <div class="modal-overlay hidden" id="cardModalOverlay" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-header">
         <h3 id="cardModalTitle">Novo Card</h3>
         <button class="icon-btn" id="closeCardModalBtn" type="button">✕</button>
       </div>
-
       <div class="modal-body">
         <div class="field">
           <label class="field-label" for="cardTitleInput">Título</label>
           <input id="cardTitleInput" class="input" type="text" placeholder="Digite o título do card" />
         </div>
-
         <div class="field">
           <label class="field-label" for="cardDescInput">Descrição</label>
           <textarea id="cardDescInput" class="textarea" placeholder="Digite a descrição"></textarea>
         </div>
-
         <div class="grid-2">
           <div class="field">
             <label class="field-label" for="cardOwnerInput">Responsável</label>
             <input id="cardOwnerInput" class="input" type="text" placeholder="Ex.: Ricardo" />
           </div>
-
           <div class="field">
             <label class="field-label" for="cardDateInput">Prazo</label>
             <input id="cardDateInput" class="input" type="date" />
           </div>
         </div>
-
         <div class="field">
           <label class="field-label" for="cardLabelsInput">Tags</label>
           <input id="cardLabelsInput" class="input" type="text" placeholder="Ex.: publicar, urgente, revisão" />
           <small class="helper">Separe por vírgula.</small>
         </div>
-
         <div class="field">
           <label class="field-label" for="cardParticipantsInput">Participantes</label>
           <div class="inline-add participant-search-inline">
@@ -243,7 +239,6 @@
           <div id="participantSearchResults" class="participant-search-results"></div>
           <div id="selectedParticipantsList" class="selected-participants-list"></div>
         </div>
-
         <div class="field">
           <label class="field-label">Checklist</label>
           <div class="inline-add">
@@ -252,7 +247,6 @@
           </div>
           <div id="editChecklistList" class="edit-list"></div>
         </div>
-
         <div class="field">
           <label class="field-label">Comentários</label>
           <div class="inline-add">
@@ -262,7 +256,6 @@
           <div id="editCommentsList" class="edit-list"></div>
         </div>
       </div>
-
       <div class="modal-footer">
         <button id="deleteCardBtn" class="btn btn-danger hidden" type="button">Excluir card</button>
         <div class="footer-right">
@@ -273,14 +266,13 @@
     </div>
   </div>
 
-  <!-- Modal de visualização do card -->
+  <!-- ── Modal visualização do card ────────────────────────── -->
   <div class="modal-overlay hidden" id="viewCardModalOverlay" aria-hidden="true">
     <div class="modal-card modal-view">
       <div class="modal-header">
         <h3 id="viewCardTitle">Detalhes do Card</h3>
         <button class="icon-btn" id="closeViewCardModalBtn" type="button">✕</button>
       </div>
-
       <div class="modal-body view-body">
         <div class="view-section">
           <div class="view-meta-row">
@@ -289,17 +281,14 @@
             <span id="viewCardColumn" class="meta-chip"></span>
           </div>
         </div>
-
         <div class="view-section">
           <h4>Descrição</h4>
           <p id="viewCardDescription" class="view-text"></p>
         </div>
-
         <div class="view-section">
           <h4>Labels</h4>
           <div id="viewCardLabels" class="card-labels"></div>
         </div>
-
         <div class="view-section">
           <div class="section-inline-header">
             <h4>Participantes</h4>
@@ -307,7 +296,6 @@
           </div>
           <div id="viewCardParticipants" class="participants-list"></div>
         </div>
-
         <div class="view-section">
           <div class="section-inline-header">
             <h4>Checklist</h4>
@@ -320,7 +308,6 @@
           </div>
           <div id="viewChecklistList" class="view-checklist"></div>
         </div>
-
         <div class="view-section">
           <div class="section-inline-header">
             <h4>Comentários</h4>
@@ -333,7 +320,6 @@
           <div id="viewCommentsList" class="view-comments"></div>
         </div>
       </div>
-
       <div class="modal-footer">
         <button id="viewEditCardBtn" class="btn btn-soft" type="button">Editar</button>
         <button id="closeViewCardFooterBtn" class="btn btn-primary" type="button">Fechar</button>
@@ -341,14 +327,13 @@
     </div>
   </div>
 
-  <!-- Auth modal -->
+  <!-- ── Auth modal ─────────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="authModalOverlay" aria-hidden="true">
     <div class="modal-card modal-sm auth-modal-card">
       <div class="modal-header">
         <h3>Entrar / Cadastro</h3>
         <button class="icon-btn" id="closeAuthModalBtn" type="button">✕</button>
       </div>
-
       <div class="modal-body auth-modal-body">
         <div class="auth-brand">
           <div class="auth-brand-mark">KQ</div>
@@ -357,7 +342,6 @@
             <p>Login simples com Google. No primeiro acesso, sua conta já é criada automaticamente.</p>
           </div>
         </div>
-
         <button id="googleLoginBtn" class="btn btn-primary btn-auth-google" type="button">
           <span class="google-mark" aria-hidden="true">
             <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -369,7 +353,6 @@
           </span>
           <span class="btn-google-text">Entrar com Google</span>
         </button>
-
         <p id="authConfigHint" class="auth-config-hint hidden">
           Preencha a SUPABASE_URL e a SUPABASE_ANON_KEY no arquivo <strong>app.js</strong> para ativar o login.
         </p>
@@ -377,14 +360,13 @@
     </div>
   </div>
 
-  <!-- Profile modal -->
+  <!-- ── Profile modal ──────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="profileModalOverlay" aria-hidden="true">
     <div class="modal-card modal-sm auth-modal-card">
       <div class="modal-header">
         <h3>Perfil</h3>
         <button class="icon-btn" id="closeProfileModalBtn" type="button">✕</button>
       </div>
-
       <div class="modal-body profile-modal-body">
         <div class="profile-user-card">
           <img id="profileAvatar" class="profile-avatar hidden" alt="Avatar do usuário" />
@@ -394,26 +376,78 @@
             <span id="profileEmail">Faça login para conectar sua conta.</span>
           </div>
         </div>
-
         <div class="field">
           <label class="field-label" for="profilePhoneInput">Telefone</label>
           <input id="profilePhoneInput" class="input" type="text" placeholder="Ex.: (11) 99999-9999" />
         </div>
-
         <div class="field">
           <label class="field-label" for="profileSectorInput">Setor</label>
           <input id="profileSectorInput" class="input" type="text" placeholder="Ex.: TI, Marketing, Financeiro" />
         </div>
-
         <div class="field">
           <label class="field-label" for="profileBioInput">Bio</label>
           <textarea id="profileBioInput" class="textarea" placeholder="Fale um pouco sobre você"></textarea>
         </div>
       </div>
-
       <div class="modal-footer">
         <button id="saveProfileBtn" class="btn btn-soft" type="button">Salvar perfil</button>
         <button id="closeProfileFooterBtn" class="btn btn-primary" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── User Bio Modal ─────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="bioModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <h3>Perfil do usuário</h3>
+        <button class="icon-btn" id="closeBioModalBtn" type="button">✕</button>
+      </div>
+      <div class="modal-body bio-modal-body" id="bioModalBody">
+        <!-- filled dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button id="bioChatBtn" class="btn btn-soft bio-chat-btn" type="button">💬 Enviar mensagem</button>
+        <button id="closeBioFooterBtn" class="btn btn-primary" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Chat Panel ─────────────────────────────────────────── -->
+  <div id="chatPanel" class="chat-panel" aria-hidden="true">
+    <div class="chat-window">
+      <!-- Left sidebar -->
+      <div class="chat-sidebar">
+        <div class="chat-sidebar-header">
+          <h4>💬 Mensagens</h4>
+          <div class="chat-search-wrap">
+            <input id="chatSearchInput" class="input" type="text" placeholder="Buscar usuário..." />
+            <div id="chatUserResults" class="chat-user-results" style="display:none"></div>
+          </div>
+        </div>
+        <div id="chatConvList" class="chat-conv-list">
+          <div class="chat-loading">Carregando...</div>
+        </div>
+      </div>
+
+      <!-- Right: active conversation -->
+      <div class="chat-main">
+        <div class="chat-main-header" id="chatMainHeader">
+          <div class="chat-no-conv" style="padding:0;flex-direction:row;gap:8px;color:var(--text-muted);font-size:13px;">
+            <span style="font-size:20px">👈</span> Selecione uma conversa
+          </div>
+          <button id="chatCloseBtn" class="chat-close-btn" type="button" aria-label="Fechar chat">✕</button>
+        </div>
+        <div id="chatMessages" class="chat-messages">
+          <div class="chat-no-conv">
+            <span>💬</span>
+            Selecione uma conversa ou busque um usuário para começar a conversar.
+          </div>
+        </div>
+        <div id="chatInputRow" class="chat-input-row" style="display:none">
+          <textarea id="chatMessageInput" class="input" rows="1" placeholder="Digite uma mensagem..."></textarea>
+          <button id="chatSendBtn" class="btn btn-primary chat-send-btn" type="button">Enviar</button>
+        </div>
       </div>
     </div>
   </div>
