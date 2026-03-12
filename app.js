@@ -897,11 +897,9 @@ function updateAuthUI(user) {
     if (profileBioInput) profileBioInput.value = "";
   }
   // Show/hide auth-only elements
-  const notifBtnEl       = document.getElementById("notifBtn");
-  const msgSectionEl     = document.getElementById("messagesPanelSection");
-  const chatWidgetEl     = document.getElementById("chatWidget");
+  const notifBtnEl   = document.getElementById("notifBtn");
+  const chatWidgetEl = document.getElementById("chatWidget");
   if (notifBtnEl)    notifBtnEl.classList.toggle("hidden", !isLogged);
-  if (msgSectionEl)  msgSectionEl.classList.toggle("hidden", !isLogged);
   if (chatWidgetEl)  chatWidgetEl.style.display = isLogged ? "" : "none";
   if (!isLogged)     { closeChatWindow(); }
 
@@ -1938,7 +1936,18 @@ document.addEventListener("click", e => {
 });
 
 function kqToggleNotif() { kqNotifOpen ? kqCloseNotif() : kqOpenNotif(); }
-function kqOpenNotif()   { if (!kqNotifPanel) return; kqNotifPanel.classList.add("is-open"); kqNotifOpen = true; }
+function kqOpenNotif() {
+  if (!kqNotifPanel || !kqNotifBtn) return;
+  // Position panel below the bell button
+  const rect = kqNotifBtn.getBoundingClientRect();
+  const panelW = 360;
+  const rightEdge = window.innerWidth - rect.right;
+  kqNotifPanel.style.top  = (rect.bottom + 8) + "px";
+  kqNotifPanel.style.right = Math.max(8, rightEdge - 8) + "px";
+  kqNotifPanel.style.left  = "auto";
+  kqNotifPanel.classList.add("is-open");
+  kqNotifOpen = true;
+}
 function kqCloseNotif()  { if (!kqNotifPanel) return; kqNotifPanel.classList.remove("is-open"); kqNotifOpen = false; }
 
 function kqGetSeen()    { try { return new Set(JSON.parse(safeGetItem(NOTIF_SEEN_KEY)||"[]")); } catch { return new Set(); } }
@@ -1987,7 +1996,7 @@ function kqRenderNotifications() {
     kqNotifBadge.classList.toggle("hidden", unread.length === 0);
   }
   if (!kqNotifList) return;
-  if (!kqNotifItems.length) { kqNotifList.innerHTML = `<div class="notif-empty">Nenhuma notificação.</div>`; return; }
+  if (!kqNotifItems.length) { kqNotifList.innerHTML = `<div class="notif-empty"><span>🔔</span>Nenhuma notificação por enquanto.</div>`; return; }
   kqNotifList.innerHTML = "";
   kqNotifItems.forEach(n => {
     const isNew = !seen.has(n.id);
@@ -2067,7 +2076,7 @@ function kqCloseBio() { closeModal(kqBioOverlay); }
 function kqPatchBioChips() {
   const cont = document.getElementById("viewCardParticipants");
   if (!cont) return;
-  cont.querySelectorAll(".participant-chip:not([data-bio-patched])").forEach(chip => {
+  cont.querySelectorAll(".participant-chip:not([data-bio-patch])").forEach(chip => {
     chip.dataset.bioPatch = "1";
     chip.classList.add("is-clickable-bio");
     chip.title = "Ver perfil";
