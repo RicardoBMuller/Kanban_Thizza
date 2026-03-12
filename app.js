@@ -181,7 +181,7 @@ async function init() {
   renderProjects();
   renderBoard();
   bindEvents();
-  runIntroSplash();   // start immediately — don't wait for auth
+  runIntroSplash();
   await initAuth();
 }
 
@@ -349,6 +349,7 @@ async function handleSessionUser(sessionUser, { showWelcome = false } = {}) {
   await loadCloudData();
   await loadSharedCards();
   updateAuthUI(authUser);
+  kqRenderNotifications();
   closeAuthModal();
   if (showWelcome) maybeShowLoginWelcome(authUser);
 }
@@ -458,38 +459,36 @@ function showSystemConfirmModal(title, message, onConfirm) {
 async function handleLogout() {
   if (!supabase || !authUser) return;
   closeProfileModal();
-  showLogoutConfirm();
-}
-
-function showLogoutConfirm() {
-  document.getElementById("logoutConfirmOverlay")?.remove();
-  const overlay = document.createElement("div");
-  overlay.id = "logoutConfirmOverlay";
-  overlay.className = "confirm-overlay";
-  overlay.innerHTML = `
-    <div class="confirm-card">
-      <h4>Confirmar saída</h4>
-      <p>Você realmente deseja sair do Kanban Quest?</p>
-      <div class="confirm-card-actions">
-        <button id="logoutCancelBtn" class="btn btn-soft">Cancelar</button>
-        <button id="logoutConfirmBtn" class="btn btn-primary">Sair</button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  overlay.querySelector("#logoutCancelBtn").addEventListener("click", () => overlay.remove());
-  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
-  overlay.querySelector("#logoutConfirmBtn").addEventListener("click", async () => {
-    overlay.remove();
+  // Build a dedicated confirm overlay — does NOT touch the project modal DOM
+  const existing = document.getElementById("kq-logout-confirm");
+  if (existing) existing.remove();
+  const ov = document.createElement("div");
+  ov.id = "kq-logout-confirm";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center";
+  ov.innerHTML = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:16px;padding:28px 32px;max-width:360px;width:90%;box-shadow:0 16px 48px rgba(0,0,0,.4);text-align:center">
+    <h4 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:0 0 10px">Confirmar saída</h4>
+    <p style="font-size:14px;color:var(--text-muted);margin:0 0 24px;line-height:1.5">Você realmente deseja sair do Kanban Quest?</p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="kqLogoutNo"  class="btn btn-soft">Cancelar</button>
+      <button id="kqLogoutYes" class="btn btn-primary">Sair</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector("#kqLogoutNo").onclick  = () => ov.remove();
+  ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  ov.querySelector("#kqLogoutYes").onclick = async () => {
+    ov.remove();
     try {
       const presentation = getUserPresentation(authUser);
       stopChatPoll();
       await supabase.auth.signOut();
       authUser = null; profileRecord = null;
       sharedCardsState = []; isViewingSharedProject = false;
+      closeChatWindow();
       showGoodbyeSplash(presentation.fullName, presentation.avatarUrl);
       setTimeout(() => window.location.reload(), 2800);
-    } catch (e) { console.error("Falha no logout:", e); window.location.reload(); }
-  });
+    } catch(e) { console.error("Logout error:", e); window.location.reload(); }
+  };
 }
 
 function showGoodbyeSplash(fullName, avatarUrl) {
@@ -897,15 +896,22 @@ function updateAuthUI(user) {
     if (profileSectorInput) profileSectorInput.value = "";
     if (profileBioInput) profileBioInput.value = "";
   }
-  // Show/hide auth-gated UI elements
-  const notifBtnEl = document.getElementById("notifBtn");
-  const messagesSectionEl = document.getElementById("messagesPanelSection");
-  const chatWidgetEl = document.getElementById("chatWidget");
-  if (notifBtnEl) notifBtnEl.classList.toggle("hidden", !isLogged);
-  if (messagesSectionEl) messagesSectionEl.classList.toggle("hidden", !isLogged);
-  if (chatWidgetEl) chatWidgetEl.style.display = isLogged ? "" : "none";
+  // Show/hide auth-only elements
+  const notifBtnEl       = document.getElementById("notifBtn");
+  const msgSectionEl     = document.getElementById("messagesPanelSection");
+  const chatWidgetEl     = document.getElementById("chatWidget");
+  if (notifBtnEl)    notifBtnEl.classList.toggle("hidden", !isLogged);
+  if (msgSectionEl)  msgSectionEl.classList.toggle("hidden", !isLogged);
+  if (chatWidgetEl)  chatWidgetEl.style.display = isLogged ? "" : "none";
+  if (!isLogged)     { closeChatWindow(); }
 
   updateCreationAccess(); renderProjects(); renderBoard();
+
+  // Refresh notifications and chat badge after auth change
+  if (isLogged) {
+    setTimeout(kqRenderNotifications, 200);
+    setTimeout(kqLoadConversations, 400);
+  }
 }
 
 function getInitials(name) {
@@ -1909,456 +1915,387 @@ function escapeHtml(text) {
 }
 
 
-// ================================================================
-// ① NOTIFICATIONS SYSTEM
-// ================================================================
-const NOTIF_SEEN_KEY = "kanban_notif_seen_v1";
-let notifPanelOpen = false;
-let notifItems = [];
 
-const notifBtnEl2   = document.getElementById("notifBtn");
-const notifBadgeEl  = document.getElementById("notifBadge");
-const notifPanelEl  = document.getElementById("notifPanel");
-const notifListEl   = document.getElementById("notifList");
-const notifMarkAllEl = document.getElementById("notifMarkAllBtn");
+// ================================================================
+// ① NOTIFICATIONS  (kq-prefixed to avoid any name collision)
+// ================================================================
+const NOTIF_SEEN_KEY = "kq_notif_seen_v1";
+let kqNotifOpen  = false;
+let kqNotifItems = [];
 
-on(notifBtnEl2, "click", e => { e.stopPropagation(); toggleNotifPanel(); });
-on(notifMarkAllEl, "click", markAllNotifRead);
+// DOM refs
+const kqNotifBtn      = document.getElementById("notifBtn");
+const kqNotifBadge    = document.getElementById("notifBadge");
+const kqNotifPanel    = document.getElementById("notifPanel");
+const kqNotifList     = document.getElementById("notifList");
+const kqNotifMarkAll  = document.getElementById("notifMarkAllBtn");
+
+if (kqNotifBtn)   kqNotifBtn.addEventListener("click", e => { e.stopPropagation(); kqToggleNotif(); });
+if (kqNotifMarkAll) kqNotifMarkAll.addEventListener("click", kqMarkAllNotifRead);
 document.addEventListener("click", e => {
-  if (notifPanelOpen && notifPanelEl && !notifPanelEl.contains(e.target) && e.target !== notifBtnEl2)
-    closeNotifPanel();
+  if (kqNotifOpen && kqNotifPanel && !kqNotifPanel.contains(e.target) && e.target !== kqNotifBtn)
+    kqCloseNotif();
 });
 
-function toggleNotifPanel() { notifPanelOpen ? closeNotifPanel() : openNotifPanel(); }
-function openNotifPanel()  { if (!notifPanelEl) return; notifPanelEl.classList.add("is-open"); notifPanelEl.setAttribute("aria-hidden","false"); notifPanelOpen = true; }
-function closeNotifPanel() { if (!notifPanelEl) return; notifPanelEl.classList.remove("is-open"); notifPanelEl.setAttribute("aria-hidden","true"); notifPanelOpen = false; }
+function kqToggleNotif() { kqNotifOpen ? kqCloseNotif() : kqOpenNotif(); }
+function kqOpenNotif()   { if (!kqNotifPanel) return; kqNotifPanel.classList.add("is-open"); kqNotifOpen = true; }
+function kqCloseNotif()  { if (!kqNotifPanel) return; kqNotifPanel.classList.remove("is-open"); kqNotifOpen = false; }
 
-function getSeenNotifIds()       { try { return new Set(JSON.parse(safeGetItem(NOTIF_SEEN_KEY)||"[]")); } catch { return new Set(); } }
-function saveSeenNotifIds(ids)   { safeSetItem(NOTIF_SEEN_KEY, JSON.stringify([...ids])); }
-function markAllNotifRead()      { const seen = getSeenNotifIds(); notifItems.forEach(n => seen.add(n.id)); saveSeenNotifIds(seen); renderNotifications(); closeNotifPanel(); }
+function kqGetSeen()    { try { return new Set(JSON.parse(safeGetItem(NOTIF_SEEN_KEY)||"[]")); } catch { return new Set(); } }
+function kqSaveSeen(s)  { safeSetItem(NOTIF_SEEN_KEY, JSON.stringify([...s])); }
+function kqMarkAllNotifRead() {
+  const s = kqGetSeen();
+  kqNotifItems.forEach(n => s.add(n.id));
+  kqSaveSeen(s); kqRenderNotifications(); kqCloseNotif();
+}
 
-function buildNotifications() {
+function kqBuildNotifications() {
   const items = [];
-  const today = new Date(); today.setHours(0,0,0,0);
-  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate()+1);
 
-  state.projects.forEach(project => {
-    Object.entries(project.columns || {}).forEach(([colKey, cards]) => {
-      (cards || []).forEach(card => {
-        if (!card.date || colKey === "done") return;
-        const deadline = new Date(`${card.date}T00:00:00`);
-        if (deadline < today)
-          items.push({ id: `overdue_${card.id}`, icon:"⚠️", title:"Card atrasado", body:`"${card.title}" passou do prazo (${formatDate(card.date)})`, time: deadline.toISOString(), cardId: card.id });
-        else if (deadline.getTime() === today.getTime())
-          items.push({ id: `today_${card.id}`, icon:"📅", title:"Vence hoje", body:`"${card.title}" vence hoje!`, time: deadline.toISOString(), cardId: card.id });
-        else if (deadline.getTime() === tomorrow.getTime())
-          items.push({ id: `tomorrow_${card.id}`, icon:"🕐", title:"Vence amanhã", body:`"${card.title}" vence amanhã.`, time: deadline.toISOString(), cardId: card.id });
+  state.projects.forEach(proj => {
+    Object.entries(proj.columns||{}).forEach(([col, cards]) => {
+      (cards||[]).forEach(card => {
+        if (!card.date || col === "done") return;
+        const dl = new Date(`${card.date}T00:00:00`);
+        if      (dl < today)                       items.push({id:`ov_${card.id}`,  icon:"⚠️", title:"Card atrasado",  body:`"${card.title}" passou do prazo (${formatDate(card.date)})`, time:dl.toISOString(), cardId:card.id});
+        else if (dl.getTime()===today.getTime())    items.push({id:`td_${card.id}`,  icon:"📅", title:"Vence hoje",     body:`"${card.title}" vence hoje!`,                                time:dl.toISOString(), cardId:card.id});
+        else if (dl.getTime()===tomorrow.getTime()) items.push({id:`tm_${card.id}`,  icon:"🕐", title:"Vence amanhã",   body:`"${card.title}" vence amanhã.`,                             time:dl.toISOString(), cardId:card.id});
       });
     });
   });
 
   sharedCardsState.forEach(sc => {
-    items.push({ id: `shared_${sc.card.id}`, icon:"🤝", title:"Card compartilhado", body:`Você foi adicionado ao card "${sc.card.title}" (${sc.projectName})`, time: sc.card.createdAt, cardId: sc.card.id });
+    items.push({id:`sh_${sc.card.id}`, icon:"🤝", title:"Card compartilhado",
+      body:`Você foi adicionado ao card "${sc.card.title}" (${sc.projectName})`,
+      time:sc.card.createdAt, cardId:sc.card.id});
   });
 
-  items.sort((a, b) => new Date(b.time) - new Date(a.time));
-  notifItems = items;
+  items.sort((a,b) => new Date(b.time)-new Date(a.time));
+  kqNotifItems = items;
 }
 
-function renderNotifications() {
+function kqRenderNotifications() {
   if (!authUser) return;
-  buildNotifications();
-  const seen   = getSeenNotifIds();
-  const unread = notifItems.filter(n => !seen.has(n.id));
+  kqBuildNotifications();
+  const seen   = kqGetSeen();
+  const unread = kqNotifItems.filter(n => !seen.has(n.id));
 
-  if (notifBadgeEl) {
-    if (unread.length > 0) { notifBadgeEl.textContent = unread.length > 99 ? "99+" : unread.length; notifBadgeEl.classList.remove("hidden"); }
-    else { notifBadgeEl.classList.add("hidden"); }
+  if (kqNotifBadge) {
+    kqNotifBadge.textContent = unread.length > 99 ? "99+" : unread.length;
+    kqNotifBadge.classList.toggle("hidden", unread.length === 0);
   }
-
-  if (!notifListEl) return;
-  if (!notifItems.length) { notifListEl.innerHTML = `<div class="notif-empty">Nenhuma notificação.</div>`; return; }
-  notifListEl.innerHTML = "";
-  notifItems.forEach(n => {
-    const isUnread = !seen.has(n.id);
-    const row = document.createElement("div");
-    row.className = `notif-item${isUnread ? " is-unread" : ""}`;
-    row.innerHTML = `
-      <span class="notif-item-icon">${n.icon}</span>
+  if (!kqNotifList) return;
+  if (!kqNotifItems.length) { kqNotifList.innerHTML = `<div class="notif-empty">Nenhuma notificação.</div>`; return; }
+  kqNotifList.innerHTML = "";
+  kqNotifItems.forEach(n => {
+    const isNew = !seen.has(n.id);
+    const row   = document.createElement("div");
+    row.className = `notif-item${isNew?" is-unread":""}`;
+    row.innerHTML = `<span class="notif-item-icon">${n.icon}</span>
       <div class="notif-item-body"><strong>${escapeHtml(n.title)}</strong><span>${escapeHtml(n.body)}</span></div>
-      <span class="notif-item-time">${timeAgo(n.time)}</span>`;
+      <span class="notif-item-time">${kqTimeAgo(n.time)}</span>`;
     row.addEventListener("click", () => {
-      seen.add(n.id); saveSeenNotifIds(seen); closeNotifPanel(); renderNotifications();
+      seen.add(n.id); kqSaveSeen(seen); kqCloseNotif(); kqRenderNotifications();
       if (n.cardId) setTimeout(() => openViewCardModal(n.cardId), 80);
     });
-    notifListEl.appendChild(row);
+    kqNotifList.appendChild(row);
   });
 }
 
-function timeAgo(iso) {
+function kqTimeAgo(iso) {
   if (!iso) return "";
-  const m = Math.floor((Date.now() - new Date(iso)) / 60000);
-  if (m < 1) return "agora"; if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`; return `${Math.floor(h/24)}d`;
+  const m = Math.floor((Date.now()-new Date(iso))/60000);
+  if (m<1) return "agora"; if (m<60) return `${m}m`;
+  const h = Math.floor(m/60);
+  return h<24 ? `${h}h` : `${Math.floor(h/24)}d`;
 }
 
-// Hook into shared card load to refresh notifications
-const _baseLoadSharedCards = loadSharedCards;
-async function loadSharedCards() {
-  await _baseLoadSharedCards();
-  renderNotifications();
-}
+// kqRenderNotifications is called from handleSessionUser and updateAuthUI
 
 // ================================================================
 // ② USER BIO MODAL
 // ================================================================
-const bioModalOverlay  = document.getElementById("bioModalOverlay");
-const closeBioModalBtn = document.getElementById("closeBioModalBtn");
-const closeBioFooterBtn = document.getElementById("closeBioFooterBtn");
-const bioChatBtn       = document.getElementById("bioChatBtn");
-const bioModalBody     = document.getElementById("bioModalBody");
-let currentBioUserId   = null;
+const kqBioOverlay     = document.getElementById("bioModalOverlay");
+const kqBioBody        = document.getElementById("bioModalBody");
+const kqBioCloseBtn    = document.getElementById("closeBioModalBtn");
+const kqBioCloseFooter = document.getElementById("closeBioFooterBtn");
+const kqBioChatBtn     = document.getElementById("bioChatBtn");
+let   kqBioUserId      = null;
 
-on(closeBioModalBtn,  "click", closeBioModal);
-on(closeBioFooterBtn, "click", closeBioModal);
-on(bioModalOverlay,   "click", e => { if (e.target === bioModalOverlay) closeBioModal(); });
-on(bioChatBtn, "click", () => {
-  if (!currentBioUserId) return;
-  const uid2 = currentBioUserId;
-  closeBioModal();
-  setTimeout(() => openChatWithUser(uid2), 60);
+if (kqBioCloseBtn)    kqBioCloseBtn.addEventListener("click", kqCloseBio);
+if (kqBioCloseFooter) kqBioCloseFooter.addEventListener("click", kqCloseBio);
+if (kqBioOverlay)     kqBioOverlay.addEventListener("click", e => { if (e.target===kqBioOverlay) kqCloseBio(); });
+if (kqBioChatBtn)     kqBioChatBtn.addEventListener("click", () => {
+  const uid = kqBioUserId;
+  kqCloseBio();
+  if (uid) setTimeout(() => kqOpenChatWith(uid), 80);
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && bioModalOverlay && !bioModalOverlay.classList.contains("hidden")) closeBioModal(); });
+document.addEventListener("keydown", e => {
+  if (e.key==="Escape" && kqBioOverlay && !kqBioOverlay.classList.contains("hidden")) kqCloseBio();
+});
 
-async function openUserBioModal(userId) {
+async function kqOpenBio(userId) {
   if (!supabase || !userId) return;
-  currentBioUserId = userId;
-  if (bioModalBody) bioModalBody.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted)">Carregando perfil...</div>`;
-  openModal(bioModalOverlay);
-
-  const { data, error } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
-  if (error || !data) { if (bioModalBody) bioModalBody.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted)">Perfil não encontrado.</div>`; return; }
-
-  const initials = getInitials(data.full_name || "?");
-  const isSelf   = authUser && userId === authUser.id;
-  if (bioModalBody) bioModalBody.innerHTML = `
+  kqBioUserId = userId;
+  if (kqBioBody) kqBioBody.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted)">Carregando...</div>`;
+  openModal(kqBioOverlay);
+  const {data,error} = await supabase.from("profiles").select("*").eq("user_id",userId).maybeSingle();
+  if (error||!data) { if(kqBioBody) kqBioBody.innerHTML=`<div style="padding:24px;text-align:center;color:var(--text-muted)">Perfil não encontrado.</div>`; return; }
+  const ini = getInitials(data.full_name||"?");
+  if (kqBioBody) kqBioBody.innerHTML = `
     <div class="bio-user-hero">
-      ${data.avatar_url ? `<img class="bio-avatar" src="${escapeHtml(data.avatar_url)}" alt="">` : `<div class="bio-avatar-fallback">${escapeHtml(initials)}</div>`}
+      ${data.avatar_url?`<img class="bio-avatar" src="${escapeHtml(data.avatar_url)}" alt="">` : `<div class="bio-avatar-fallback">${escapeHtml(ini)}</div>`}
       <div class="bio-user-info">
-        <strong>${escapeHtml(data.full_name || "Sem nome")}</strong>
-        <span>${escapeHtml(data.email || "")}</span>
+        <strong>${escapeHtml(data.full_name||"Sem nome")}</strong>
+        <span>${escapeHtml(data.email||"")}</span>
       </div>
     </div>
     <div class="bio-detail-grid">
-      <div class="bio-detail-item"><label>📞 Telefone</label><span>${escapeHtml(data.phone || "—")}</span></div>
-      <div class="bio-detail-item"><label>🏢 Setor</label><span>${escapeHtml(data.sector || "—")}</span></div>
+      <div class="bio-detail-item"><label>📞 Telefone</label><span>${escapeHtml(data.phone||"—")}</span></div>
+      <div class="bio-detail-item"><label>🏢 Setor</label><span>${escapeHtml(data.sector||"—")}</span></div>
     </div>
-    <div>
-      <label class="field-label" style="margin-bottom:6px;display:block">📝 Bio</label>
-      <div class="bio-text-block ${!data.bio ? "bio-text-empty" : ""}">${escapeHtml(data.bio || "Nenhuma bio preenchida.")}</div>
+    <div><label class="field-label" style="margin-bottom:6px;display:block">📝 Bio</label>
+      <div class="bio-text-block${!data.bio?" bio-text-empty":""}">${escapeHtml(data.bio||"Nenhuma bio preenchida.")}</div>
     </div>`;
-  if (bioChatBtn) bioChatBtn.style.display = isSelf ? "none" : "";
+  if (kqBioChatBtn) kqBioChatBtn.style.display = (authUser&&userId===authUser.id) ? "none" : "";
 }
+function kqCloseBio() { closeModal(kqBioOverlay); }
 
-function closeBioModal() { closeModal(bioModalOverlay); }
-
-// Make participant chips clickable to open bio
-function patchParticipantChipsForBio() {
-  const container = document.getElementById("viewCardParticipants");
-  if (!container) return;
-  container.querySelectorAll(".participant-chip").forEach(chip => {
-    if (chip.dataset.bioPatched) return;
-    chip.dataset.bioPatched = "1";
+// Make participant chips clickable for bio — called after openViewCardModal renders
+function kqPatchBioChips() {
+  const cont = document.getElementById("viewCardParticipants");
+  if (!cont) return;
+  cont.querySelectorAll(".participant-chip:not([data-bio-patched])").forEach(chip => {
+    chip.dataset.bioPatch = "1";
     chip.classList.add("is-clickable-bio");
     chip.title = "Ver perfil";
     chip.addEventListener("click", async () => {
       if (!supabase) return;
-      const name = chip.textContent.replace(/[🤝👤]/g,"").trim();
-      // Try exact match first, then partial
-      const { data } = await supabase.from("profiles").select("user_id,full_name,email")
-        .ilike("full_name", `%${name}%`).limit(5);
+      const name = chip.textContent.replace(/[🤝👤\s]/g,"").trim();
+      if (!name) return;
+      const {data} = await supabase.from("profiles").select("user_id,full_name")
+        .ilike("full_name",`%${name}%`).limit(5);
       if (!data?.length) return;
-      const match = data.find(p => (p.full_name||"").toLowerCase() === name.toLowerCase()) || data[0];
-      if (match) openUserBioModal(match.user_id);
+      const match = data.find(p=>(p.full_name||"").toLowerCase()===name.toLowerCase())||data[0];
+      if (match) kqOpenBio(match.user_id);
     });
   });
 }
 
-// Wrap openViewCardModal to patch bio chips after render
-const _origOpenViewCardModal = openViewCardModal;
-function openViewCardModal(cardId) {
-  _origOpenViewCardModal(cardId);
-  setTimeout(patchParticipantChipsForBio, 80);
-}
+// Intercept openViewCardModal to patch chips after render
+// We do this cleanly with a MutationObserver on the participants container
+(function() {
+  const orig = openViewCardModal;
+  window._kqOrigOpenViewCard = orig;
+})();
+
+// We cannot override openViewCardModal declared with function keyword inside closure.
+// Instead, observe the viewCardParticipants div for changes.
+(function() {
+  const el = document.getElementById("viewCardParticipants");
+  if (!el) return;
+  const obs = new MutationObserver(() => kqPatchBioChips());
+  obs.observe(el, {childList:true, subtree:true});
+})();
 
 // ================================================================
-// ③ FLOATING CHAT WIDGET (bottom-right, GChat-style)
+// ③ FLOATING CHAT WIDGET
 // ================================================================
-const chatWidget      = document.getElementById("chatWidget");
-const chatWindow      = document.getElementById("chatWindow");
-const chatToggleBtn   = document.getElementById("chatToggleBtn");
-const chatToggleBadge = document.getElementById("chatToggleBadge");
-const chatWindowCloseBtn = document.getElementById("chatWindowCloseBtn");
-const chatConvList    = document.getElementById("chatConvList");
-const chatMainHeader  = document.getElementById("chatMainHeader");
-const chatMessages    = document.getElementById("chatMessages");
-const chatInputRow    = document.getElementById("chatInputRow");
-const chatMessageInput = document.getElementById("chatMessageInput");
-const chatSendBtn     = document.getElementById("chatSendBtn");
-const chatSearchInput = document.getElementById("chatSearchInput");
-const chatUserDropdown = document.getElementById("chatUserDropdown");
-const openChatBtn2    = document.getElementById("openChatBtn");
-const globalUnreadBadge = document.getElementById("globalUnreadBadge");
+let kqChatOpen    = false;
+let kqActiveUid   = null;
+let kqActiveUname = "";
+let kqConvs       = [];
+let kqPollTimer   = null;
+let kqSearchTimer = null;
 
-let chatWindowOpen    = false;
-let activeChatUserId  = null;
-let activeChatUserName = "";
-let chatConversations = [];
-let chatPollTimer     = null;
-let chatSearchTimer   = null;
+// DOM refs
+const kqChatWidget  = document.getElementById("chatWidget");
+const kqChatWindow  = document.getElementById("chatWindow");
+const kqToggleBtn   = document.getElementById("chatToggleBtn");
+const kqToggleBadge = document.getElementById("chatToggleBadge");
+const kqWinClose    = document.getElementById("chatWindowCloseBtn");
+const kqConvList    = document.getElementById("chatConvList");
+const kqMsgsArea    = document.getElementById("chatMessages");
+const kqInputRow    = document.getElementById("chatInputRow");
+const kqMsgInput    = document.getElementById("chatMessageInput");
+const kqSendBtn     = document.getElementById("chatSendBtn");
+const kqSearchIn    = document.getElementById("chatSearchInput");
+const kqDropdown    = document.getElementById("chatUserDropdown");
+const kqSidebarBtn  = document.getElementById("openChatBtn");
+const kqMainHeader  = document.getElementById("chatMainHeader");
+const kqGlobalBadge = document.getElementById("globalUnreadBadge");
 
-// Events
-on(chatToggleBtn,      "click", toggleChatWindow);
-on(chatWindowCloseBtn, "click", () => { chatWindowOpen = true; toggleChatWindow(); });
-on(openChatBtn2,       "click", () => { if (!requireAuth("usar o chat")) return; openChatWindowShow(); });
-on(chatSendBtn,        "click", handleSendMessage);
-on(chatMessageInput,   "keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } });
-on(chatSearchInput,    "input",   () => { clearTimeout(chatSearchTimer); const t = chatSearchInput.value.trim(); if (!t) { chatUserDropdown.style.display = "none"; return; } chatSearchTimer = setTimeout(() => searchChatUsers(t), 300); });
-document.addEventListener("click", e => {
-  if (chatUserDropdown && !chatUserDropdown.contains(e.target) && e.target !== chatSearchInput)
-    chatUserDropdown.style.display = "none";
-});
+if (kqToggleBtn)  kqToggleBtn.addEventListener("click",  kqToggleChat);
+if (kqWinClose)   kqWinClose.addEventListener("click",   kqCloseChat);
+if (kqSidebarBtn) kqSidebarBtn.addEventListener("click", () => { if (!requireAuth("usar o chat")) return; kqOpenChat(); });
+if (kqSendBtn)    kqSendBtn.addEventListener("click",    kqSend);
+if (kqMsgInput)   kqMsgInput.addEventListener("keydown", e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();kqSend();} });
+if (kqMsgInput)   kqMsgInput.addEventListener("input",   function(){this.style.height="auto";this.style.height=Math.min(this.scrollHeight,90)+"px";});
+if (kqSearchIn)   kqSearchIn.addEventListener("input",   () => { clearTimeout(kqSearchTimer); const t=kqSearchIn.value.trim(); if(!t){kqDropdown&&(kqDropdown.style.display="none");return;} kqSearchTimer=setTimeout(()=>kqSearchUsers(t),300); });
+document.addEventListener("click", e => { if(kqDropdown&&!kqDropdown.contains(e.target)&&e.target!==kqSearchIn) kqDropdown.style.display="none"; });
 
-// Auto-resize textarea
-on(chatMessageInput, "input", function() { this.style.height = "auto"; this.style.height = Math.min(this.scrollHeight, 90) + "px"; });
+function kqToggleChat() { kqChatOpen ? kqCloseChat() : kqOpenChat(); }
 
-function toggleChatWindow() {
-  chatWindowOpen ? closeChatWindow() : openChatWindowShow();
-}
-
-function openChatWindowShow() {
+function kqOpenChat() {
   if (!authUser) return;
-  chatWindowOpen = true;
-  chatWindow.classList.add("is-visible");
-  chatWindow.setAttribute("aria-hidden", "false");
-  chatToggleBtn.textContent = "✕";
-  chatToggleBtn.style.fontSize = "20px";
-  loadConversations();
-  startChatPoll();
+  kqChatOpen = true;
+  if (kqChatWindow) { kqChatWindow.classList.add("is-visible"); kqChatWindow.setAttribute("aria-hidden","false"); }
+  if (kqToggleBtn) { kqToggleBtn.textContent="✕"; kqToggleBtn.style.fontSize="20px"; }
+  kqLoadConversations();
+  kqStartPoll();
 }
 
-function closeChatWindow() {
-  chatWindowOpen = false;
-  chatWindow.classList.remove("is-visible");
-  chatWindow.setAttribute("aria-hidden", "true");
-  chatToggleBtn.textContent = "💬";
-  chatToggleBtn.style.fontSize = "22px";
-  stopChatPoll();
+function kqCloseChat() {
+  kqChatOpen = false;
+  if (kqChatWindow) { kqChatWindow.classList.remove("is-visible"); kqChatWindow.setAttribute("aria-hidden","true"); }
+  if (kqToggleBtn) { kqToggleBtn.innerHTML=`💬<span id="chatToggleBadge" class="${(kqConvs.reduce((a,c)=>a+(c.unread||0),0))>0?"":" hidden"}" style="position:absolute;top:-2px;right:-2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-card)">${kqConvs.reduce((a,c)=>a+(c.unread||0),0)||""}</span>`; kqToggleBtn.style.fontSize="22px"; }
+  kqStopPoll();
 }
+function closeChatWindow() { kqCloseChat(); } // alias used by logout patch
 
-function openChatWithUser(userId, userName) {
+function kqOpenChatWith(userId, uname) {
   if (!requireAuth("usar o chat")) return;
-  if (!chatWindowOpen) openChatWindowShow();
-  // Delay to let conversations load
-  setTimeout(() => openConversation(userId, userName || ""), 300);
+  if (!kqChatOpen) kqOpenChat();
+  setTimeout(() => kqOpenConv(userId, uname||""), 350);
 }
 
-async function searchChatUsers(term) {
-  if (!supabase || !authUser || !term) return;
+async function kqSearchUsers(term) {
+  if (!supabase||!authUser) return;
   let data = null;
-  const rpc = await supabase.rpc("search_profiles", { search_term: term });
-  if (!rpc.error) data = rpc.data;
-  else {
-    const fb = await supabase.from("profiles").select("user_id,full_name,email,avatar_url")
-      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`).limit(8);
-    data = fb.data;
-  }
-  const results = (data || []).filter(u => u.user_id !== authUser.id);
-  renderChatUserDropdown(results);
-}
-
-function renderChatUserDropdown(results) {
-  if (!chatUserDropdown) return;
-  if (!results.length) { chatUserDropdown.style.display = "none"; return; }
-  chatUserDropdown.innerHTML = "";
-  chatUserDropdown.style.display = "block";
-  results.forEach(u => {
-    const initials = getInitials(u.full_name || u.email || "?");
-    const row = document.createElement("div");
-    row.className = "chat-user-result-item";
-    row.innerHTML = `${u.avatar_url ? `<img class="chat-avatar-sm" src="${escapeHtml(u.avatar_url)}" alt="">` : `<div class="chat-avatar-sm">${escapeHtml(initials)}</div>`}<span>${escapeHtml(u.full_name || u.email || "Usuário")}</span>`;
-    row.addEventListener("click", () => {
-      chatSearchInput.value = "";
-      chatUserDropdown.style.display = "none";
-      openConversation(u.user_id, u.full_name || u.email || "Usuário");
-    });
-    chatUserDropdown.appendChild(row);
+  const r = await supabase.rpc("search_profiles",{search_term:term});
+  if (!r.error) data=r.data;
+  else { const fb=await supabase.from("profiles").select("user_id,full_name,email,avatar_url").or(`full_name.ilike.%${term}%,email.ilike.%${term}%`).limit(8); data=fb.data; }
+  const res=(data||[]).filter(u=>u.user_id!==authUser.id);
+  if (!kqDropdown) return;
+  if (!res.length) { kqDropdown.style.display="none"; return; }
+  kqDropdown.innerHTML=""; kqDropdown.style.display="block";
+  res.forEach(u => {
+    const ini=getInitials(u.full_name||u.email||"?");
+    const row=document.createElement("div"); row.className="chat-user-result-item";
+    row.innerHTML=`${u.avatar_url?`<img class="chat-avatar-sm" src="${escapeHtml(u.avatar_url)}" alt="">` : `<div class="chat-avatar-sm">${escapeHtml(ini)}</div>`}<span>${escapeHtml(u.full_name||u.email||"Usuário")}</span>`;
+    row.addEventListener("click",()=>{ if(kqSearchIn) kqSearchIn.value=""; kqDropdown.style.display="none"; kqOpenConv(u.user_id,u.full_name||u.email||"Usuário"); });
+    kqDropdown.appendChild(row);
   });
 }
 
-async function loadConversations() {
-  if (!supabase || !authUser || !chatConvList) return;
-  const { data, error } = await supabase.from("messages").select("*")
+async function kqLoadConversations() {
+  if (!supabase||!authUser||!kqConvList) return;
+  const {data,error}=await supabase.from("messages").select("*")
     .or(`from_user_id.eq.${authUser.id},to_user_id.eq.${authUser.id}`)
-    .order("created_at", { ascending: false });
+    .order("created_at",{ascending:false});
   if (error) return;
 
-  // Group by partner
-  const convMap = new Map();
-  (data || []).forEach(msg => {
-    const partnerId = msg.from_user_id === authUser.id ? msg.to_user_id : msg.from_user_id;
-    if (!convMap.has(partnerId)) convMap.set(partnerId, { lastMsg: msg.text, lastTime: msg.created_at, unread: 0 });
-    if (msg.to_user_id === authUser.id && !msg.read) convMap.get(partnerId).unread++;
+  const map=new Map();
+  (data||[]).forEach(msg=>{
+    const pid=msg.from_user_id===authUser.id?msg.to_user_id:msg.from_user_id;
+    if(!map.has(pid)) map.set(pid,{lastMsg:msg.text,lastTime:msg.created_at,unread:0});
+    if(msg.to_user_id===authUser.id&&!msg.read) map.get(pid).unread++;
   });
 
-  const partnerIds = [...convMap.keys()];
-  let profiles = {};
-  if (partnerIds.length) {
-    const { data: profs } = await supabase.from("profiles").select("user_id,full_name,email,avatar_url").in("user_id", partnerIds);
-    (profs || []).forEach(p => { profiles[p.user_id] = p; });
-  }
+  const ids=[...map.keys()];
+  let profs={};
+  if(ids.length){const{data:ps}=await supabase.from("profiles").select("user_id,full_name,email,avatar_url").in("user_id",ids);(ps||[]).forEach(p=>{profs[p.user_id]=p;});}
 
-  chatConversations = [...convMap.entries()].map(([uid, conv]) => {
-    const p = profiles[uid] || {};
-    return { ...conv, userId: uid, name: p.full_name || p.email || uid, email: p.email || "", avatarUrl: p.avatar_url || "" };
-  }).sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime));
+  kqConvs=[...map.entries()].map(([uid,c])=>{
+    const p=profs[uid]||{};
+    return{...c,userId:uid,name:p.full_name||p.email||uid,email:p.email||"",avatarUrl:p.avatar_url||""};
+  }).sort((a,b)=>new Date(b.lastTime)-new Date(a.lastTime));
 
-  renderConvList();
-  updateChatBadges();
+  kqRenderConvList();
+  kqUpdateBadges();
 }
 
-function renderConvList() {
-  if (!chatConvList) return;
-  if (!chatConversations.length) {
-    chatConvList.innerHTML = `<div class="chat-conv-empty">Nenhuma conversa ainda.<br>Busque um usuário acima.</div>`;
-    return;
-  }
-  chatConvList.innerHTML = "";
-  chatConversations.forEach(conv => {
-    const initials = getInitials(conv.name);
-    const isActive = conv.userId === activeChatUserId;
-    const row = document.createElement("div");
-    row.className = `chat-conv-item${isActive ? " is-active" : ""}`;
-    row.innerHTML = `
-      ${conv.avatarUrl ? `<img class="chat-conv-avatar" src="${escapeHtml(conv.avatarUrl)}" alt="">` : `<div class="chat-conv-avatar">${escapeHtml(initials)}</div>`}
-      <div class="chat-conv-copy">
-        <strong>${escapeHtml(conv.name)}</strong>
-        <span>${escapeHtml(truncate(conv.lastMsg || "", 32))}</span>
+function kqRenderConvList() {
+  if (!kqConvList) return;
+  if (!kqConvs.length) { kqConvList.innerHTML=`<div class="chat-conv-empty">Nenhuma conversa.<br>Busque um usuário acima.</div>`; return; }
+  kqConvList.innerHTML="";
+  kqConvs.forEach(c=>{
+    const ini=getInitials(c.name);
+    const row=document.createElement("div");
+    row.className=`chat-conv-item${c.userId===kqActiveUid?" is-active":""}`;
+    row.innerHTML=`${c.avatarUrl?`<img class="chat-conv-avatar" src="${escapeHtml(c.avatarUrl)}" alt="">` : `<div class="chat-conv-avatar">${escapeHtml(ini)}</div>`}
+      <div class="chat-conv-copy"><strong>${escapeHtml(c.name)}</strong><span>${escapeHtml(truncate(c.lastMsg||"",32))}</span></div>
+      ${c.unread>0?`<span class="chat-conv-unread">${c.unread}</span>`:""}`;
+    row.addEventListener("click",()=>kqOpenConv(c.userId,c.name));
+    // Avatar click → bio
+    row.querySelector(".chat-conv-avatar, img.chat-conv-avatar")?.addEventListener("click", e=>{e.stopPropagation();kqOpenBio(c.userId);});
+    kqConvList.appendChild(row);
+  });
+}
+
+async function kqOpenConv(userId, uname) {
+  kqActiveUid   = userId;
+  kqActiveUname = uname || kqConvs.find(c=>c.userId===userId)?.name || "Usuário";
+  const conv    = kqConvs.find(c=>c.userId===userId);
+  const ini     = getInitials(kqActiveUname);
+  const av      = conv?.avatarUrl||"";
+
+  if (kqMainHeader) {
+    kqMainHeader.innerHTML=`
+      <div class="chat-main-header-avatar-wrap" style="cursor:pointer" title="Ver perfil">
+        ${av?`<img class="chat-main-header-avatar" src="${escapeHtml(av)}" alt="">` : `<div class="chat-main-header-avatar">${escapeHtml(ini)}</div>`}
       </div>
-      ${conv.unread > 0 ? `<span class="chat-conv-unread">${conv.unread}</span>` : ""}`;
-    row.addEventListener("click", () => openConversation(conv.userId, conv.name));
-    chatConvList.appendChild(row);
+      <div class="chat-main-info"><strong>${escapeHtml(kqActiveUname)}</strong><span>${escapeHtml(conv?.email||"")}</span></div>
+      <button class="chat-close-btn" id="kqWinCloseInner" type="button">✕</button>`;
+    kqMainHeader.querySelector("#kqWinCloseInner")?.addEventListener("click", kqCloseChat);
+    kqMainHeader.querySelector(".chat-main-header-avatar-wrap")?.addEventListener("click", ()=>kqOpenBio(userId));
+  }
+
+  if (kqInputRow) kqInputRow.style.display="";
+  if (kqMsgsArea) kqMsgsArea.innerHTML=`<div class="chat-loading-msg">Carregando...</div>`;
+  kqRenderConvList();
+  await kqFetchMessages();
+
+  // Mark read
+  if (supabase&&authUser) supabase.from("messages").update({read:true}).eq("from_user_id",userId).eq("to_user_id",authUser.id).eq("read",false).then(()=>kqLoadConversations());
+  if (kqMsgInput) kqMsgInput.focus();
+}
+
+async function kqFetchMessages() {
+  if (!supabase||!authUser||!kqActiveUid||!kqMsgsArea) return;
+  const {data,error}=await supabase.from("messages").select("*")
+    .or(`and(from_user_id.eq.${authUser.id},to_user_id.eq.${kqActiveUid}),and(from_user_id.eq.${kqActiveUid},to_user_id.eq.${authUser.id})`)
+    .order("created_at",{ascending:true});
+  if(error) return;
+  const msgs=data||[];
+  if(!msgs.length){kqMsgsArea.innerHTML=`<div class="chat-no-conv-state"><span>👋</span>Inicie uma conversa!</div>`;return;}
+  kqMsgsArea.innerHTML="";
+  let lastDate="";
+  msgs.forEach(msg=>{
+    const ds=new Date(msg.created_at).toLocaleDateString("pt-BR");
+    if(ds!==lastDate){const d=document.createElement("div");d.className="chat-date-divider";d.textContent=ds;kqMsgsArea.appendChild(d);lastDate=ds;}
+    const mine=msg.from_user_id===authUser.id;
+    const b=document.createElement("div"); b.className=`chat-msg ${mine?"is-mine":"is-theirs"}`;
+    b.innerHTML=`<div class="chat-bubble">${escapeHtml(msg.text)}</div><div class="chat-msg-meta">${new Date(msg.created_at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>`;
+    kqMsgsArea.appendChild(b);
   });
+  kqMsgsArea.scrollTop=kqMsgsArea.scrollHeight;
 }
 
-async function openConversation(userId, userName) {
-  activeChatUserId   = userId;
-  activeChatUserName = userName || chatConversations.find(c => c.userId === userId)?.name || "Usuário";
-
-  const conv = chatConversations.find(c => c.userId === userId);
-  const initials  = getInitials(activeChatUserName);
-  const avatarUrl = conv?.avatarUrl || "";
-
-  // Update header
-  if (chatMainHeader) chatMainHeader.innerHTML = `
-    ${avatarUrl ? `<img class="chat-main-header-avatar" src="${escapeHtml(avatarUrl)}" alt="">` : `<div class="chat-main-header-avatar">${escapeHtml(initials)}</div>`}
-    <div class="chat-main-info"><strong>${escapeHtml(activeChatUserName)}</strong><span>${escapeHtml(conv?.email || "")}</span></div>
-    <button class="chat-close-btn" id="chatWindowCloseBtnInner" type="button">✕</button>`;
-  document.getElementById("chatWindowCloseBtnInner")?.addEventListener("click", closeChatWindow);
-
-  if (chatInputRow) chatInputRow.style.display = "";
-  if (chatMessages) chatMessages.innerHTML = `<div class="chat-loading-msg">Carregando...</div>`;
-
-  renderConvList();
-  await fetchAndRenderMessages();
-
-  // Mark as read
-  if (supabase && authUser) {
-    supabase.from("messages").update({ read: true })
-      .eq("from_user_id", userId).eq("to_user_id", authUser.id).eq("read", false)
-      .then(() => loadConversations());
-  }
-  if (chatMessageInput) chatMessageInput.focus();
+async function kqSend() {
+  if (!kqMsgInput) return;
+  const text=kqMsgInput.value.trim();
+  if (!text||!kqActiveUid||!supabase||!authUser) return;
+  kqMsgInput.value=""; kqMsgInput.style.height="auto";
+  await supabase.from("messages").insert({from_user_id:authUser.id,to_user_id:kqActiveUid,text,read:false});
+  await kqFetchMessages();
+  await kqLoadConversations();
 }
 
-async function fetchAndRenderMessages() {
-  if (!supabase || !authUser || !activeChatUserId || !chatMessages) return;
-  const { data, error } = await supabase.from("messages").select("*")
-    .or(`and(from_user_id.eq.${authUser.id},to_user_id.eq.${activeChatUserId}),and(from_user_id.eq.${activeChatUserId},to_user_id.eq.${authUser.id})`)
-    .order("created_at", { ascending: true });
-  if (error) return;
-
-  const msgs = data || [];
-  if (!msgs.length) { chatMessages.innerHTML = `<div class="chat-no-conv-state"><span>👋</span>Inicie uma conversa!</div>`; return; }
-
-  chatMessages.innerHTML = "";
-  let lastDate = "";
-  msgs.forEach(msg => {
-    const dateStr = new Date(msg.created_at).toLocaleDateString("pt-BR");
-    if (dateStr !== lastDate) {
-      const div = document.createElement("div");
-      div.className = "chat-date-divider"; div.textContent = dateStr;
-      chatMessages.appendChild(div); lastDate = dateStr;
-    }
-    const isMine = msg.from_user_id === authUser.id;
-    const bubble = document.createElement("div");
-    bubble.className = `chat-msg ${isMine ? "is-mine" : "is-theirs"}`;
-    bubble.innerHTML = `<div class="chat-bubble">${escapeHtml(msg.text)}</div><div class="chat-msg-meta">${new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}</div>`;
-    chatMessages.appendChild(bubble);
-  });
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-async function handleSendMessage() {
-  if (!chatMessageInput) return;
-  const text = chatMessageInput.value.trim();
-  if (!text || !activeChatUserId || !supabase || !authUser) return;
-  chatMessageInput.value = ""; chatMessageInput.style.height = "auto";
-  const { error } = await supabase.from("messages").insert({ from_user_id: authUser.id, to_user_id: activeChatUserId, text, read: false });
-  if (error) { console.error("Erro ao enviar:", error); return; }
-  await fetchAndRenderMessages();
-  await loadConversations();
-}
-
-function updateChatBadges() {
-  const total = chatConversations.reduce((acc, c) => acc + (c.unread || 0), 0);
-  // Global badge in sidebar
-  if (globalUnreadBadge) {
-    globalUnreadBadge.textContent = total > 99 ? "99+" : total;
-    globalUnreadBadge.classList.toggle("hidden", total === 0);
-  }
-  // Floating bubble badge
-  if (chatToggleBadge) {
-    chatToggleBadge.textContent = total > 99 ? "99+" : total;
-    chatToggleBadge.classList.toggle("hidden", total === 0);
+function kqUpdateBadges() {
+  const total=kqConvs.reduce((a,c)=>a+(c.unread||0),0);
+  if (kqGlobalBadge) { kqGlobalBadge.textContent=total>99?"99+":total; kqGlobalBadge.classList.toggle("hidden",total===0); }
+  // Rebuild toggle button preserving icon
+  if (kqToggleBtn && !kqChatOpen) {
+    kqToggleBtn.innerHTML=`💬${total>0?`<span style="position:absolute;top:-2px;right:-2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-card)">${total>99?"99+":total}</span>`:""}`;
   }
 }
 
-function startChatPoll() {
-  stopChatPoll();
-  chatPollTimer = setInterval(async () => {
-    if (activeChatUserId) await fetchAndRenderMessages();
-    await loadConversations();
-  }, 5000);
-}
-function stopChatPoll() { if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; } }
+function kqStartPoll() { kqStopPoll(); kqPollTimer=setInterval(async()=>{ if(kqActiveUid)await kqFetchMessages(); await kqLoadConversations(); },5000); }
+function kqStopPoll()  { if(kqPollTimer){clearInterval(kqPollTimer);kqPollTimer=null;} }
+function stopChatPoll(){ kqStopPoll(); } // alias used by logout patch
 
-// After login, init chat and notifications
-const _baseUpdateAuthUI = updateAuthUI;
-function updateAuthUI(user) {
-  _baseUpdateAuthUI(user);
-  if (user && supabase) {
-    setTimeout(renderNotifications, 100);
-    setTimeout(loadConversations, 300);
-  } else {
-    // clear chat state on logout
-    chatConversations = []; activeChatUserId = null;
-    if (chatConvList) chatConvList.innerHTML = "";
-    if (chatMessages) chatMessages.innerHTML = "";
-    closeChatWindow();
-  }
-}
 
 }); // end DOMContentLoaded
-
