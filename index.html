@@ -48,8 +48,8 @@
         <ul id="projectList" class="project-list"></ul>
       </section>
 
-      <!-- ── Mensagens nav ── -->
-      <section class="panel">
+      <!-- Mensagens — only shown when logged in (JS toggles display) -->
+      <section class="panel hidden" id="messagesPanelSection">
         <div class="panel-header"><span>Mensagens</span></div>
         <button id="openChatBtn" class="messages-nav-btn" type="button">
           💬 Abrir mensagens
@@ -67,31 +67,19 @@
         <div class="dashboard-stack">
           <article class="dashboard-stat dashboard-stat-primary">
             <div class="dashboard-stat-icon">🗂️</div>
-            <div class="dashboard-stat-copy">
-              <span>Cards totais</span>
-              <strong id="dashTotalCards">0</strong>
-            </div>
+            <div class="dashboard-stat-copy"><span>Cards totais</span><strong id="dashTotalCards">0</strong></div>
           </article>
           <article class="dashboard-stat dashboard-stat-success">
             <div class="dashboard-stat-icon">✅</div>
-            <div class="dashboard-stat-copy">
-              <span>Concluídos</span>
-              <strong id="dashCompletedCards">0</strong>
-            </div>
+            <div class="dashboard-stat-copy"><span>Concluídos</span><strong id="dashCompletedCards">0</strong></div>
           </article>
           <article class="dashboard-stat dashboard-stat-warning">
             <div class="dashboard-stat-icon">⏳</div>
-            <div class="dashboard-stat-copy">
-              <span>Atrasados</span>
-              <strong id="dashOverdueCards">0</strong>
-            </div>
+            <div class="dashboard-stat-copy"><span>Atrasados</span><strong id="dashOverdueCards">0</strong></div>
           </article>
           <article class="dashboard-stat dashboard-stat-accent">
             <div class="dashboard-stat-icon">📋</div>
-            <div class="dashboard-stat-copy">
-              <span>Checklist concluído</span>
-              <strong id="dashChecklistDone">0%</strong>
-            </div>
+            <div class="dashboard-stat-copy"><span>Checklist concluído</span><strong id="dashChecklistDone">0%</strong></div>
           </article>
         </div>
       </section>
@@ -113,14 +101,12 @@
           <h2 id="boardTitle">Projeto Inicial</h2>
           <p id="projectCount">1 projeto(s) no total</p>
         </div>
-
         <div class="topbar-actions">
-          <!-- ── Notification Bell ── -->
-          <button id="notifBtn" class="notif-btn" type="button" aria-label="Notificações" title="Notificações">
+          <!-- Notification bell — hidden by default, shown when logged in -->
+          <button id="notifBtn" class="notif-btn hidden" type="button" aria-label="Notificações" title="Notificações">
             🔔
             <span id="notifBadge" class="notif-badge hidden">0</span>
           </button>
-
           <button id="loginOpenBtn" class="btn btn-google-login" type="button">
             <span class="google-mark" aria-hidden="true">
               <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -163,7 +149,7 @@
     </main>
   </div>
 
-  <!-- ── Notification Panel (dropdown) ──────────────────────── -->
+  <!-- ── Notification Dropdown ──────────────────────────────────── -->
   <div id="notifPanel" class="notif-panel" aria-hidden="true">
     <div class="notif-panel-header">
       <h4>🔔 Notificações</h4>
@@ -174,13 +160,13 @@
     </div>
   </div>
 
-  <!-- ── Project actions menu ───────────────────────────────── -->
+  <!-- ── Project context menu ───────────────────────────────────── -->
   <div id="projectActionsMenu" class="project-actions-menu hidden" aria-hidden="true">
     <button id="projectActionRenameBtn" class="project-actions-item" type="button">✏️ Renomear projeto</button>
     <button id="projectActionDeleteBtn" class="project-actions-item danger" type="button">🗑️ Excluir projeto</button>
   </div>
 
-  <!-- ── Modal Projeto ──────────────────────────────────────── -->
+  <!-- ── Modal Projeto ──────────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="projectModalOverlay" aria-hidden="true">
     <div class="modal-card modal-sm">
       <div class="modal-header">
@@ -198,7 +184,7 @@
     </div>
   </div>
 
-  <!-- ── Modal edição do card ───────────────────────────────── -->
+  <!-- ── Modal edição do card ───────────────────────────────────── -->
   <div class="modal-overlay hidden" id="cardModalOverlay" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-header">
@@ -266,7 +252,7 @@
     </div>
   </div>
 
-  <!-- ── Modal visualização do card ────────────────────────── -->
+  <!-- ── Modal visualização do card ────────────────────────────── -->
   <div class="modal-overlay hidden" id="viewCardModalOverlay" aria-hidden="true">
     <div class="modal-card modal-view">
       <div class="modal-header">
@@ -327,7 +313,7 @@
     </div>
   </div>
 
-  <!-- ── Auth modal ─────────────────────────────────────────── -->
+  <!-- ── Auth modal ─────────────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="authModalOverlay" aria-hidden="true">
     <div class="modal-card modal-sm auth-modal-card">
       <div class="modal-header">
@@ -360,7 +346,7 @@
     </div>
   </div>
 
-  <!-- ── Profile modal ──────────────────────────────────────── -->
+  <!-- ── Profile modal ──────────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="profileModalOverlay" aria-hidden="true">
     <div class="modal-card modal-sm auth-modal-card">
       <div class="modal-header">
@@ -396,16 +382,14 @@
     </div>
   </div>
 
-  <!-- ── User Bio Modal ─────────────────────────────────────── -->
+  <!-- ── User Bio Modal ─────────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="bioModalOverlay" aria-hidden="true">
     <div class="modal-card modal-sm">
       <div class="modal-header">
         <h3>Perfil do usuário</h3>
         <button class="icon-btn" id="closeBioModalBtn" type="button">✕</button>
       </div>
-      <div class="modal-body bio-modal-body" id="bioModalBody">
-        <!-- filled dynamically -->
-      </div>
+      <div class="modal-body bio-modal-body" id="bioModalBody"></div>
       <div class="modal-footer">
         <button id="bioChatBtn" class="btn btn-soft bio-chat-btn" type="button">💬 Enviar mensagem</button>
         <button id="closeBioFooterBtn" class="btn btn-primary" type="button">Fechar</button>
@@ -413,43 +397,43 @@
     </div>
   </div>
 
-  <!-- ── Chat Panel ─────────────────────────────────────────── -->
-  <div id="chatPanel" class="chat-panel" aria-hidden="true">
-    <div class="chat-window">
-      <!-- Left sidebar -->
+  <!-- ── Floating Chat Widget — bottom-right like GChat / Teams ── -->
+  <div class="chat-widget" id="chatWidget" style="display:none">
+    <div class="chat-window" id="chatWindow" aria-hidden="true">
+      <!-- Left: conversation list -->
       <div class="chat-sidebar">
         <div class="chat-sidebar-header">
           <h4>💬 Mensagens</h4>
           <div class="chat-search-wrap">
-            <input id="chatSearchInput" class="input" type="text" placeholder="Buscar usuário..." />
-            <div id="chatUserResults" class="chat-user-results" style="display:none"></div>
+            <input id="chatSearchInput" class="input" type="text" placeholder="Buscar usuário..." autocomplete="off" />
+            <div id="chatUserDropdown" class="chat-user-dropdown" style="display:none"></div>
           </div>
         </div>
-        <div id="chatConvList" class="chat-conv-list">
-          <div class="chat-loading">Carregando...</div>
-        </div>
+        <div id="chatConvList" class="chat-conv-list"></div>
       </div>
-
       <!-- Right: active conversation -->
       <div class="chat-main">
         <div class="chat-main-header" id="chatMainHeader">
-          <div class="chat-no-conv" style="padding:0;flex-direction:row;gap:8px;color:var(--text-muted);font-size:13px;">
-            <span style="font-size:20px">👈</span> Selecione uma conversa
-          </div>
-          <button id="chatCloseBtn" class="chat-close-btn" type="button" aria-label="Fechar chat">✕</button>
+          <span class="chat-no-conv-header">Selecione uma conversa</span>
+          <button class="chat-close-btn" id="chatWindowCloseBtn" type="button" title="Fechar">✕</button>
         </div>
         <div id="chatMessages" class="chat-messages">
-          <div class="chat-no-conv">
+          <div class="chat-no-conv-state">
             <span>💬</span>
-            Selecione uma conversa ou busque um usuário para começar a conversar.
+            Selecione uma conversa ou busque um usuário para começar.
           </div>
         </div>
         <div id="chatInputRow" class="chat-input-row" style="display:none">
           <textarea id="chatMessageInput" class="input" rows="1" placeholder="Digite uma mensagem..."></textarea>
-          <button id="chatSendBtn" class="btn btn-primary chat-send-btn" type="button">Enviar</button>
+          <button id="chatSendBtn" class="btn btn-primary chat-send-btn" type="button">➤</button>
         </div>
       </div>
     </div>
+    <!-- Toggle bubble -->
+    <button class="chat-toggle-btn" id="chatToggleBtn" type="button" aria-label="Mensagens" title="Mensagens">
+      💬
+      <span id="chatToggleBadge" class="chat-toggle-badge hidden">0</span>
+    </button>
   </div>
 
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

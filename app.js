@@ -457,16 +457,38 @@ function showSystemConfirmModal(title, message, onConfirm) {
 
 async function handleLogout() {
   if (!supabase || !authUser) return;
-  showSystemConfirmModal("Confirmação", "Você realmente deseja sair do Kanban Quest?", async () => {
+  closeProfileModal();
+  showLogoutConfirm();
+}
+
+function showLogoutConfirm() {
+  document.getElementById("logoutConfirmOverlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "logoutConfirmOverlay";
+  overlay.className = "confirm-overlay";
+  overlay.innerHTML = `
+    <div class="confirm-card">
+      <h4>Confirmar saída</h4>
+      <p>Você realmente deseja sair do Kanban Quest?</p>
+      <div class="confirm-card-actions">
+        <button id="logoutCancelBtn" class="btn btn-soft">Cancelar</button>
+        <button id="logoutConfirmBtn" class="btn btn-primary">Sair</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector("#logoutCancelBtn").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector("#logoutConfirmBtn").addEventListener("click", async () => {
+    overlay.remove();
     try {
       const presentation = getUserPresentation(authUser);
+      stopChatPoll();
       await supabase.auth.signOut();
       authUser = null; profileRecord = null;
-      clearDataForSignedOutUser();
-      closeProfileModal();
+      sharedCardsState = []; isViewingSharedProject = false;
       showGoodbyeSplash(presentation.fullName, presentation.avatarUrl);
-      setTimeout(() => { window.location.href = window.location.origin + window.location.pathname; }, 3200);
-    } catch(e) { console.error("Falha no logout:", e); window.location.reload(); }
+      setTimeout(() => window.location.reload(), 2800);
+    } catch (e) { console.error("Falha no logout:", e); window.location.reload(); }
   });
 }
 
@@ -875,6 +897,14 @@ function updateAuthUI(user) {
     if (profileSectorInput) profileSectorInput.value = "";
     if (profileBioInput) profileBioInput.value = "";
   }
+  // Show/hide auth-gated UI elements
+  const notifBtnEl = document.getElementById("notifBtn");
+  const messagesSectionEl = document.getElementById("messagesPanelSection");
+  const chatWidgetEl = document.getElementById("chatWidget");
+  if (notifBtnEl) notifBtnEl.classList.toggle("hidden", !isLogged);
+  if (messagesSectionEl) messagesSectionEl.classList.toggle("hidden", !isLogged);
+  if (chatWidgetEl) chatWidgetEl.style.display = isLogged ? "" : "none";
+
   updateCreationAccess(); renderProjects(); renderBoard();
 }
 
@@ -1884,284 +1914,258 @@ function escapeHtml(text) {
 // ================================================================
 const NOTIF_SEEN_KEY = "kanban_notif_seen_v1";
 let notifPanelOpen = false;
-let notifItems = []; // [{id, type, icon, title, body, time, cardId}]
+let notifItems = [];
 
-const notifBtn       = document.getElementById("notifBtn");
-const notifBadge     = document.getElementById("notifBadge");
-const notifPanel     = document.getElementById("notifPanel");
-const notifList      = document.getElementById("notifList");
-const notifMarkAllBtn = document.getElementById("notifMarkAllBtn");
-const openChatBtn    = document.getElementById("openChatBtn");
-const globalUnreadBadge = document.getElementById("globalUnreadBadge");
+const notifBtnEl2   = document.getElementById("notifBtn");
+const notifBadgeEl  = document.getElementById("notifBadge");
+const notifPanelEl  = document.getElementById("notifPanel");
+const notifListEl   = document.getElementById("notifList");
+const notifMarkAllEl = document.getElementById("notifMarkAllBtn");
 
-on(notifBtn, "click", e => { e.stopPropagation(); toggleNotifPanel(); });
-on(notifMarkAllBtn, "click", () => { markAllNotifRead(); });
+on(notifBtnEl2, "click", e => { e.stopPropagation(); toggleNotifPanel(); });
+on(notifMarkAllEl, "click", markAllNotifRead);
 document.addEventListener("click", e => {
-  if (notifPanelOpen && !notifPanel.contains(e.target) && e.target !== notifBtn) closeNotifPanel();
+  if (notifPanelOpen && notifPanelEl && !notifPanelEl.contains(e.target) && e.target !== notifBtnEl2)
+    closeNotifPanel();
 });
 
-function toggleNotifPanel() {
-  notifPanelOpen ? closeNotifPanel() : openNotifPanel();
-}
-function openNotifPanel() {
-  notifPanel.classList.add("is-open");
-  notifPanel.setAttribute("aria-hidden", "false");
-  notifPanelOpen = true;
-}
-function closeNotifPanel() {
-  notifPanel.classList.remove("is-open");
-  notifPanel.setAttribute("aria-hidden", "true");
-  notifPanelOpen = false;
-}
+function toggleNotifPanel() { notifPanelOpen ? closeNotifPanel() : openNotifPanel(); }
+function openNotifPanel()  { if (!notifPanelEl) return; notifPanelEl.classList.add("is-open"); notifPanelEl.setAttribute("aria-hidden","false"); notifPanelOpen = true; }
+function closeNotifPanel() { if (!notifPanelEl) return; notifPanelEl.classList.remove("is-open"); notifPanelEl.setAttribute("aria-hidden","true"); notifPanelOpen = false; }
 
-function getSeenNotifIds() {
-  try { return new Set(JSON.parse(safeGetItem(NOTIF_SEEN_KEY) || "[]")); } catch { return new Set(); }
-}
-function markSeenNotifIds(ids) {
-  safeSetItem(NOTIF_SEEN_KEY, JSON.stringify([...ids]));
-}
-function markAllNotifRead() {
-  const seen = getSeenNotifIds();
-  notifItems.forEach(n => seen.add(n.id));
-  markSeenNotifIds(seen);
-  renderNotifications();
-  closeNotifPanel();
-}
+function getSeenNotifIds()       { try { return new Set(JSON.parse(safeGetItem(NOTIF_SEEN_KEY)||"[]")); } catch { return new Set(); } }
+function saveSeenNotifIds(ids)   { safeSetItem(NOTIF_SEEN_KEY, JSON.stringify([...ids])); }
+function markAllNotifRead()      { const seen = getSeenNotifIds(); notifItems.forEach(n => seen.add(n.id)); saveSeenNotifIds(seen); renderNotifications(); closeNotifPanel(); }
 
 function buildNotifications() {
   const items = [];
   const today = new Date(); today.setHours(0,0,0,0);
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
 
-  // Own cards: overdue + due today/tomorrow
   state.projects.forEach(project => {
     Object.entries(project.columns || {}).forEach(([colKey, cards]) => {
       (cards || []).forEach(card => {
         if (!card.date || colKey === "done") return;
         const deadline = new Date(`${card.date}T00:00:00`);
-        const id = `overdue_${card.id}`;
-        if (deadline < today) {
-          items.push({ id, type: "overdue", icon: "⚠️", title: "Card atrasado", body: `"${card.title}" passou do prazo (${formatDate(card.date)})`, time: deadline.toISOString(), cardId: card.id });
-        } else if (deadline.getTime() === today.getTime()) {
-          items.push({ id: `today_${card.id}`, type: "due_today", icon: "📅", title: "Vence hoje", body: `"${card.title}" vence hoje!`, time: deadline.toISOString(), cardId: card.id });
-        } else if (deadline.getTime() === tomorrow.getTime()) {
-          items.push({ id: `tomorrow_${card.id}`, type: "due_soon", icon: "🕐", title: "Vence amanhã", body: `"${card.title}" vence amanhã.`, time: deadline.toISOString(), cardId: card.id });
-        }
+        if (deadline < today)
+          items.push({ id: `overdue_${card.id}`, icon:"⚠️", title:"Card atrasado", body:`"${card.title}" passou do prazo (${formatDate(card.date)})`, time: deadline.toISOString(), cardId: card.id });
+        else if (deadline.getTime() === today.getTime())
+          items.push({ id: `today_${card.id}`, icon:"📅", title:"Vence hoje", body:`"${card.title}" vence hoje!`, time: deadline.toISOString(), cardId: card.id });
+        else if (deadline.getTime() === tomorrow.getTime())
+          items.push({ id: `tomorrow_${card.id}`, icon:"🕐", title:"Vence amanhã", body:`"${card.title}" vence amanhã.`, time: deadline.toISOString(), cardId: card.id });
       });
     });
   });
 
-  // Shared cards: you were added as participant
   sharedCardsState.forEach(sc => {
-    items.push({
-      id: `shared_${sc.card.id}`,
-      type: "shared",
-      icon: "🤝",
-      title: "Card compartilhado",
-      body: `Você foi adicionado ao card "${sc.card.title}" (projeto: ${sc.projectName})`,
-      time: sc.card.createdAt,
-      cardId: sc.card.id
-    });
+    items.push({ id: `shared_${sc.card.id}`, icon:"🤝", title:"Card compartilhado", body:`Você foi adicionado ao card "${sc.card.title}" (${sc.projectName})`, time: sc.card.createdAt, cardId: sc.card.id });
   });
 
-  // Sort by time desc
   items.sort((a, b) => new Date(b.time) - new Date(a.time));
   notifItems = items;
 }
 
 function renderNotifications() {
+  if (!authUser) return;
   buildNotifications();
-  const seen = getSeenNotifIds();
+  const seen   = getSeenNotifIds();
   const unread = notifItems.filter(n => !seen.has(n.id));
 
-  // Badge
-  if (unread.length > 0) {
-    notifBadge.textContent = unread.length > 99 ? "99+" : unread.length;
-    notifBadge.classList.remove("hidden");
-  } else {
-    notifBadge.classList.add("hidden");
+  if (notifBadgeEl) {
+    if (unread.length > 0) { notifBadgeEl.textContent = unread.length > 99 ? "99+" : unread.length; notifBadgeEl.classList.remove("hidden"); }
+    else { notifBadgeEl.classList.add("hidden"); }
   }
 
-  // List
-  if (!notifItems.length) {
-    notifList.innerHTML = `<div class="notif-empty">Nenhuma notificação.</div>`;
-    return;
-  }
-
-  notifList.innerHTML = "";
+  if (!notifListEl) return;
+  if (!notifItems.length) { notifListEl.innerHTML = `<div class="notif-empty">Nenhuma notificação.</div>`; return; }
+  notifListEl.innerHTML = "";
   notifItems.forEach(n => {
     const isUnread = !seen.has(n.id);
     const row = document.createElement("div");
     row.className = `notif-item${isUnread ? " is-unread" : ""}`;
     row.innerHTML = `
       <span class="notif-item-icon">${n.icon}</span>
-      <div class="notif-item-body">
-        <strong>${escapeHtml(n.title)}</strong>
-        <span>${escapeHtml(n.body)}</span>
-      </div>
+      <div class="notif-item-body"><strong>${escapeHtml(n.title)}</strong><span>${escapeHtml(n.body)}</span></div>
       <span class="notif-item-time">${timeAgo(n.time)}</span>`;
     row.addEventListener("click", () => {
-      // Mark as read
-      seen.add(n.id);
-      markSeenNotifIds(seen);
-      closeNotifPanel();
-      renderNotifications();
-      // Navigate to card if possible
-      if (n.cardId) {
-        const found = findCard(n.cardId) || (findSharedCard(n.cardId) ? { card: findSharedCard(n.cardId).card, columnId: findSharedCard(n.cardId).columnId } : null);
-        if (found) setTimeout(() => openViewCardModal(n.cardId), 80);
-      }
+      seen.add(n.id); saveSeenNotifIds(seen); closeNotifPanel(); renderNotifications();
+      if (n.cardId) setTimeout(() => openViewCardModal(n.cardId), 80);
     });
-    notifList.appendChild(row);
+    notifListEl.appendChild(row);
   });
 }
 
 function timeAgo(iso) {
   if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "agora";
-  if (m < 60) return `${m}m`;
+  const m = Math.floor((Date.now() - new Date(iso)) / 60000);
+  if (m < 1) return "agora"; if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
+  if (h < 24) return `${h}h`; return `${Math.floor(h/24)}d`;
+}
+
+// Hook into shared card load to refresh notifications
+const _baseLoadSharedCards = loadSharedCards;
+async function loadSharedCards() {
+  await _baseLoadSharedCards();
+  renderNotifications();
 }
 
 // ================================================================
 // ② USER BIO MODAL
 // ================================================================
-const bioModalOverlay = document.getElementById("bioModalOverlay");
+const bioModalOverlay  = document.getElementById("bioModalOverlay");
 const closeBioModalBtn = document.getElementById("closeBioModalBtn");
 const closeBioFooterBtn = document.getElementById("closeBioFooterBtn");
-const bioChatBtn = document.getElementById("bioChatBtn");
-const bioModalBody = document.getElementById("bioModalBody");
-let currentBioUserId = null;
+const bioChatBtn       = document.getElementById("bioChatBtn");
+const bioModalBody     = document.getElementById("bioModalBody");
+let currentBioUserId   = null;
 
 on(closeBioModalBtn,  "click", closeBioModal);
 on(closeBioFooterBtn, "click", closeBioModal);
 on(bioModalOverlay,   "click", e => { if (e.target === bioModalOverlay) closeBioModal(); });
 on(bioChatBtn, "click", () => {
   if (!currentBioUserId) return;
+  const uid2 = currentBioUserId;
   closeBioModal();
-  openChatWithUser(currentBioUserId);
+  setTimeout(() => openChatWithUser(uid2), 60);
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && !bioModalOverlay.classList.contains("hidden")) closeBioModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && bioModalOverlay && !bioModalOverlay.classList.contains("hidden")) closeBioModal(); });
 
 async function openUserBioModal(userId) {
   if (!supabase || !userId) return;
   currentBioUserId = userId;
-  bioModalBody.innerHTML = `<div class="chat-loading">Carregando perfil...</div>`;
+  if (bioModalBody) bioModalBody.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted)">Carregando perfil...</div>`;
   openModal(bioModalOverlay);
 
   const { data, error } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
-  if (error || !data) {
-    bioModalBody.innerHTML = `<div class="notif-empty">Perfil não encontrado.</div>`;
-    return;
-  }
+  if (error || !data) { if (bioModalBody) bioModalBody.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted)">Perfil não encontrado.</div>`; return; }
 
   const initials = getInitials(data.full_name || "?");
-  const isSelf = authUser && userId === authUser.id;
-
-  bioModalBody.innerHTML = `
+  const isSelf   = authUser && userId === authUser.id;
+  if (bioModalBody) bioModalBody.innerHTML = `
     <div class="bio-user-hero">
-      ${data.avatar_url
-        ? `<img class="bio-avatar" src="${escapeHtml(data.avatar_url)}" alt="${escapeHtml(data.full_name || "")}"/>`
-        : `<div class="bio-avatar-fallback">${escapeHtml(initials)}</div>`}
+      ${data.avatar_url ? `<img class="bio-avatar" src="${escapeHtml(data.avatar_url)}" alt="">` : `<div class="bio-avatar-fallback">${escapeHtml(initials)}</div>`}
       <div class="bio-user-info">
         <strong>${escapeHtml(data.full_name || "Sem nome")}</strong>
         <span>${escapeHtml(data.email || "")}</span>
       </div>
     </div>
     <div class="bio-detail-grid">
-      <div class="bio-detail-item">
-        <label>📞 Telefone</label>
-        <span>${escapeHtml(data.phone || "—")}</span>
-      </div>
-      <div class="bio-detail-item">
-        <label>🏢 Setor</label>
-        <span>${escapeHtml(data.sector || "—")}</span>
-      </div>
+      <div class="bio-detail-item"><label>📞 Telefone</label><span>${escapeHtml(data.phone || "—")}</span></div>
+      <div class="bio-detail-item"><label>🏢 Setor</label><span>${escapeHtml(data.sector || "—")}</span></div>
     </div>
     <div>
       <label class="field-label" style="margin-bottom:6px;display:block">📝 Bio</label>
       <div class="bio-text-block ${!data.bio ? "bio-text-empty" : ""}">${escapeHtml(data.bio || "Nenhuma bio preenchida.")}</div>
     </div>`;
-
-  // Hide chat button for own profile
-  bioChatBtn.style.display = isSelf ? "none" : "";
+  if (bioChatBtn) bioChatBtn.style.display = isSelf ? "none" : "";
 }
 
 function closeBioModal() { closeModal(bioModalOverlay); }
 
-// ================================================================
-// ③ INTERNAL CHAT
-// ================================================================
-const chatPanel      = document.getElementById("chatPanel");
-const chatCloseBtn   = document.getElementById("chatCloseBtn");
-const chatSearchInput = document.getElementById("chatSearchInput");
-const chatUserResults = document.getElementById("chatUserResults");
-const chatConvList   = document.getElementById("chatConvList");
-const chatMainHeader = document.getElementById("chatMainHeader");
-const chatMessages   = document.getElementById("chatMessages");
-const chatInputRow   = document.getElementById("chatInputRow");
-const chatMessageInput = document.getElementById("chatMessageInput");
-const chatSendBtn    = document.getElementById("chatSendBtn");
-
-let chatOpen = false;
-let activeChatUserId   = null;
-let activeChatUserName = "";
-let chatConversations  = []; // [{userId, name, email, avatarUrl, lastMsg, lastTime, unread}]
-let chatPollTimer      = null;
-let chatSearchTimer    = null;
-let chatUserSearchResults = [];
-
-on(openChatBtn,  "click", () => { if (!requireAuth("usar o chat")) return; openChatPanel(); });
-on(chatCloseBtn, "click", closeChatPanel);
-on(chatPanel, "click", e => { if (e.target === chatPanel) closeChatPanel(); });
-on(chatSendBtn, "click", handleSendMessage);
-on(chatMessageInput, "keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }
-});
-on(chatSearchInput, "input", () => {
-  clearTimeout(chatSearchTimer);
-  const term = chatSearchInput.value.trim();
-  if (!term) { chatUserResults.style.display = "none"; return; }
-  chatSearchTimer = setTimeout(() => searchChatUsers(term), 300);
-});
-document.addEventListener("click", e => {
-  if (!chatUserResults.contains(e.target) && e.target !== chatSearchInput) {
-    chatUserResults.style.display = "none";
-  }
-});
-
-function openChatPanel(userId = null, userName = "") {
-  chatPanel.classList.add("is-open");
-  chatPanel.setAttribute("aria-hidden", "false");
-  chatOpen = true;
-  loadConversations().then(() => {
-    if (userId) openConversation(userId, userName);
+// Make participant chips clickable to open bio
+function patchParticipantChipsForBio() {
+  const container = document.getElementById("viewCardParticipants");
+  if (!container) return;
+  container.querySelectorAll(".participant-chip").forEach(chip => {
+    if (chip.dataset.bioPatched) return;
+    chip.dataset.bioPatched = "1";
+    chip.classList.add("is-clickable-bio");
+    chip.title = "Ver perfil";
+    chip.addEventListener("click", async () => {
+      if (!supabase) return;
+      const name = chip.textContent.replace(/[🤝👤]/g,"").trim();
+      // Try exact match first, then partial
+      const { data } = await supabase.from("profiles").select("user_id,full_name,email")
+        .ilike("full_name", `%${name}%`).limit(5);
+      if (!data?.length) return;
+      const match = data.find(p => (p.full_name||"").toLowerCase() === name.toLowerCase()) || data[0];
+      if (match) openUserBioModal(match.user_id);
+    });
   });
+}
+
+// Wrap openViewCardModal to patch bio chips after render
+const _origOpenViewCardModal = openViewCardModal;
+function openViewCardModal(cardId) {
+  _origOpenViewCardModal(cardId);
+  setTimeout(patchParticipantChipsForBio, 80);
+}
+
+// ================================================================
+// ③ FLOATING CHAT WIDGET (bottom-right, GChat-style)
+// ================================================================
+const chatWidget      = document.getElementById("chatWidget");
+const chatWindow      = document.getElementById("chatWindow");
+const chatToggleBtn   = document.getElementById("chatToggleBtn");
+const chatToggleBadge = document.getElementById("chatToggleBadge");
+const chatWindowCloseBtn = document.getElementById("chatWindowCloseBtn");
+const chatConvList    = document.getElementById("chatConvList");
+const chatMainHeader  = document.getElementById("chatMainHeader");
+const chatMessages    = document.getElementById("chatMessages");
+const chatInputRow    = document.getElementById("chatInputRow");
+const chatMessageInput = document.getElementById("chatMessageInput");
+const chatSendBtn     = document.getElementById("chatSendBtn");
+const chatSearchInput = document.getElementById("chatSearchInput");
+const chatUserDropdown = document.getElementById("chatUserDropdown");
+const openChatBtn2    = document.getElementById("openChatBtn");
+const globalUnreadBadge = document.getElementById("globalUnreadBadge");
+
+let chatWindowOpen    = false;
+let activeChatUserId  = null;
+let activeChatUserName = "";
+let chatConversations = [];
+let chatPollTimer     = null;
+let chatSearchTimer   = null;
+
+// Events
+on(chatToggleBtn,      "click", toggleChatWindow);
+on(chatWindowCloseBtn, "click", () => { chatWindowOpen = true; toggleChatWindow(); });
+on(openChatBtn2,       "click", () => { if (!requireAuth("usar o chat")) return; openChatWindowShow(); });
+on(chatSendBtn,        "click", handleSendMessage);
+on(chatMessageInput,   "keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } });
+on(chatSearchInput,    "input",   () => { clearTimeout(chatSearchTimer); const t = chatSearchInput.value.trim(); if (!t) { chatUserDropdown.style.display = "none"; return; } chatSearchTimer = setTimeout(() => searchChatUsers(t), 300); });
+document.addEventListener("click", e => {
+  if (chatUserDropdown && !chatUserDropdown.contains(e.target) && e.target !== chatSearchInput)
+    chatUserDropdown.style.display = "none";
+});
+
+// Auto-resize textarea
+on(chatMessageInput, "input", function() { this.style.height = "auto"; this.style.height = Math.min(this.scrollHeight, 90) + "px"; });
+
+function toggleChatWindow() {
+  chatWindowOpen ? closeChatWindow() : openChatWindowShow();
+}
+
+function openChatWindowShow() {
+  if (!authUser) return;
+  chatWindowOpen = true;
+  chatWindow.classList.add("is-visible");
+  chatWindow.setAttribute("aria-hidden", "false");
+  chatToggleBtn.textContent = "✕";
+  chatToggleBtn.style.fontSize = "20px";
+  loadConversations();
   startChatPoll();
 }
 
-function closeChatPanel() {
-  chatPanel.classList.remove("is-open");
-  chatPanel.setAttribute("aria-hidden", "true");
-  chatOpen = false;
+function closeChatWindow() {
+  chatWindowOpen = false;
+  chatWindow.classList.remove("is-visible");
+  chatWindow.setAttribute("aria-hidden", "true");
+  chatToggleBtn.textContent = "💬";
+  chatToggleBtn.style.fontSize = "22px";
   stopChatPoll();
 }
 
-function openChatWithUser(userId) {
+function openChatWithUser(userId, userName) {
   if (!requireAuth("usar o chat")) return;
-  // Find name from conversations or shared
-  let name = "";
-  const conv = chatConversations.find(c => c.userId === userId);
-  if (conv) name = conv.name;
-  openChatPanel(userId, name);
+  if (!chatWindowOpen) openChatWindowShow();
+  // Delay to let conversations load
+  setTimeout(() => openConversation(userId, userName || ""), 300);
 }
 
 async function searchChatUsers(term) {
-  if (!supabase || !authUser) return;
+  if (!supabase || !authUser || !term) return;
   let data = null;
   const rpc = await supabase.rpc("search_profiles", { search_term: term });
   if (!rpc.error) data = rpc.data;
@@ -2170,52 +2174,44 @@ async function searchChatUsers(term) {
       .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`).limit(8);
     data = fb.data;
   }
-  chatUserSearchResults = (data || []).filter(u => u.user_id !== authUser.id);
-  renderChatUserResults();
+  const results = (data || []).filter(u => u.user_id !== authUser.id);
+  renderChatUserDropdown(results);
 }
 
-function renderChatUserResults() {
-  if (!chatUserSearchResults.length) { chatUserResults.style.display = "none"; return; }
-  chatUserResults.innerHTML = "";
-  chatUserResults.style.display = "block";
-  chatUserSearchResults.forEach(u => {
+function renderChatUserDropdown(results) {
+  if (!chatUserDropdown) return;
+  if (!results.length) { chatUserDropdown.style.display = "none"; return; }
+  chatUserDropdown.innerHTML = "";
+  chatUserDropdown.style.display = "block";
+  results.forEach(u => {
     const initials = getInitials(u.full_name || u.email || "?");
     const row = document.createElement("div");
     row.className = "chat-user-result-item";
-    row.innerHTML = `
-      ${u.avatar_url ? `<img src="${escapeHtml(u.avatar_url)}" alt="${escapeHtml(u.full_name||"")}">` : `<div class="chat-avatar-sm">${escapeHtml(initials)}</div>`}
-      <span>${escapeHtml(u.full_name || u.email || "Usuário")}</span>`;
+    row.innerHTML = `${u.avatar_url ? `<img class="chat-avatar-sm" src="${escapeHtml(u.avatar_url)}" alt="">` : `<div class="chat-avatar-sm">${escapeHtml(initials)}</div>`}<span>${escapeHtml(u.full_name || u.email || "Usuário")}</span>`;
     row.addEventListener("click", () => {
       chatSearchInput.value = "";
-      chatUserResults.style.display = "none";
+      chatUserDropdown.style.display = "none";
       openConversation(u.user_id, u.full_name || u.email || "Usuário");
     });
-    chatUserResults.appendChild(row);
+    chatUserDropdown.appendChild(row);
   });
 }
 
 async function loadConversations() {
-  if (!supabase || !authUser) { chatConvList.innerHTML = `<div class="notif-empty">Faça login para ver mensagens.</div>`; return; }
-
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
+  if (!supabase || !authUser || !chatConvList) return;
+  const { data, error } = await supabase.from("messages").select("*")
     .or(`from_user_id.eq.${authUser.id},to_user_id.eq.${authUser.id}`)
     .order("created_at", { ascending: false });
+  if (error) return;
 
-  if (error) { console.error("Erro ao carregar conversas:", error); return; }
-
-  // Group by conversation partner
+  // Group by partner
   const convMap = new Map();
   (data || []).forEach(msg => {
     const partnerId = msg.from_user_id === authUser.id ? msg.to_user_id : msg.from_user_id;
-    if (!convMap.has(partnerId)) {
-      convMap.set(partnerId, { lastMsg: msg.text, lastTime: msg.created_at, unread: 0, userId: partnerId });
-    }
+    if (!convMap.has(partnerId)) convMap.set(partnerId, { lastMsg: msg.text, lastTime: msg.created_at, unread: 0 });
     if (msg.to_user_id === authUser.id && !msg.read) convMap.get(partnerId).unread++;
   });
 
-  // Fetch profile info for each partner
   const partnerIds = [...convMap.keys()];
   let profiles = {};
   if (partnerIds.length) {
@@ -2224,17 +2220,18 @@ async function loadConversations() {
   }
 
   chatConversations = [...convMap.entries()].map(([uid, conv]) => {
-    const prof = profiles[uid] || {};
-    return { ...conv, name: prof.full_name || prof.email || uid, email: prof.email || "", avatarUrl: prof.avatar_url || "" };
+    const p = profiles[uid] || {};
+    return { ...conv, userId: uid, name: p.full_name || p.email || uid, email: p.email || "", avatarUrl: p.avatar_url || "" };
   }).sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime));
 
   renderConvList();
-  updateGlobalUnreadBadge();
+  updateChatBadges();
 }
 
 function renderConvList() {
+  if (!chatConvList) return;
   if (!chatConversations.length) {
-    chatConvList.innerHTML = `<div class="notif-empty" style="padding:20px 14px;font-size:12px;">Nenhuma conversa. Busque um usuário acima para começar.</div>`;
+    chatConvList.innerHTML = `<div class="chat-conv-empty">Nenhuma conversa ainda.<br>Busque um usuário acima.</div>`;
     return;
   }
   chatConvList.innerHTML = "";
@@ -2244,10 +2241,10 @@ function renderConvList() {
     const row = document.createElement("div");
     row.className = `chat-conv-item${isActive ? " is-active" : ""}`;
     row.innerHTML = `
-      ${conv.avatarUrl ? `<img src="${escapeHtml(conv.avatarUrl)}" alt="${escapeHtml(conv.name)}">` : `<div class="chat-conv-avatar">${escapeHtml(initials)}</div>`}
+      ${conv.avatarUrl ? `<img class="chat-conv-avatar" src="${escapeHtml(conv.avatarUrl)}" alt="">` : `<div class="chat-conv-avatar">${escapeHtml(initials)}</div>`}
       <div class="chat-conv-copy">
         <strong>${escapeHtml(conv.name)}</strong>
-        <span>${escapeHtml(truncate(conv.lastMsg || "", 36))}</span>
+        <span>${escapeHtml(truncate(conv.lastMsg || "", 32))}</span>
       </div>
       ${conv.unread > 0 ? `<span class="chat-conv-unread">${conv.unread}</span>` : ""}`;
     row.addEventListener("click", () => openConversation(conv.userId, conv.name));
@@ -2257,52 +2254,43 @@ function renderConvList() {
 
 async function openConversation(userId, userName) {
   activeChatUserId   = userId;
-  activeChatUserName = userName;
+  activeChatUserName = userName || chatConversations.find(c => c.userId === userId)?.name || "Usuário";
+
+  const conv = chatConversations.find(c => c.userId === userId);
+  const initials  = getInitials(activeChatUserName);
+  const avatarUrl = conv?.avatarUrl || "";
 
   // Update header
-  const conv = chatConversations.find(c => c.userId === userId);
-  const initials = getInitials(userName);
-  const avatarUrl = conv?.avatarUrl || "";
-  chatMainHeader.innerHTML = `
-    ${avatarUrl ? `<img src="${escapeHtml(avatarUrl)}" class="chat-main-avatar" alt="${escapeHtml(userName)}">` : `<div class="chat-main-avatar">${escapeHtml(initials)}</div>`}
-    <div class="chat-main-info">
-      <strong>${escapeHtml(userName)}</strong>
-      <span>${escapeHtml(conv?.email || "")}</span>
-    </div>
-    <button id="chatCloseBtn" class="chat-close-btn" type="button">✕</button>`;
-  chatMainHeader.querySelector("#chatCloseBtn").addEventListener("click", closeChatPanel);
+  if (chatMainHeader) chatMainHeader.innerHTML = `
+    ${avatarUrl ? `<img class="chat-main-header-avatar" src="${escapeHtml(avatarUrl)}" alt="">` : `<div class="chat-main-header-avatar">${escapeHtml(initials)}</div>`}
+    <div class="chat-main-info"><strong>${escapeHtml(activeChatUserName)}</strong><span>${escapeHtml(conv?.email || "")}</span></div>
+    <button class="chat-close-btn" id="chatWindowCloseBtnInner" type="button">✕</button>`;
+  document.getElementById("chatWindowCloseBtnInner")?.addEventListener("click", closeChatWindow);
 
-  chatInputRow.style.display = "";
-  chatMessages.innerHTML = `<div class="chat-loading">Carregando...</div>`;
+  if (chatInputRow) chatInputRow.style.display = "";
+  if (chatMessages) chatMessages.innerHTML = `<div class="chat-loading-msg">Carregando...</div>`;
 
-  renderConvList(); // highlight active
+  renderConvList();
   await fetchAndRenderMessages();
 
-  // Mark messages as read
+  // Mark as read
   if (supabase && authUser) {
     supabase.from("messages").update({ read: true })
       .eq("from_user_id", userId).eq("to_user_id", authUser.id).eq("read", false)
-      .then(() => { loadConversations(); });
+      .then(() => loadConversations());
   }
-  chatMessageInput.focus();
+  if (chatMessageInput) chatMessageInput.focus();
 }
 
 async function fetchAndRenderMessages() {
-  if (!supabase || !authUser || !activeChatUserId) return;
-
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
+  if (!supabase || !authUser || !activeChatUserId || !chatMessages) return;
+  const { data, error } = await supabase.from("messages").select("*")
     .or(`and(from_user_id.eq.${authUser.id},to_user_id.eq.${activeChatUserId}),and(from_user_id.eq.${activeChatUserId},to_user_id.eq.${authUser.id})`)
     .order("created_at", { ascending: true });
-
-  if (error) { console.error("Erro mensagens:", error); return; }
+  if (error) return;
 
   const msgs = data || [];
-  if (!msgs.length) {
-    chatMessages.innerHTML = `<div class="chat-empty-state"><span>👋</span>Inicie uma conversa!</div>`;
-    return;
-  }
+  if (!msgs.length) { chatMessages.innerHTML = `<div class="chat-no-conv-state"><span>👋</span>Inicie uma conversa!</div>`; return; }
 
   chatMessages.innerHTML = "";
   let lastDate = "";
@@ -2310,41 +2298,41 @@ async function fetchAndRenderMessages() {
     const dateStr = new Date(msg.created_at).toLocaleDateString("pt-BR");
     if (dateStr !== lastDate) {
       const div = document.createElement("div");
-      div.className = "chat-date-divider";
-      div.textContent = dateStr;
-      chatMessages.appendChild(div);
-      lastDate = dateStr;
+      div.className = "chat-date-divider"; div.textContent = dateStr;
+      chatMessages.appendChild(div); lastDate = dateStr;
     }
     const isMine = msg.from_user_id === authUser.id;
     const bubble = document.createElement("div");
     bubble.className = `chat-msg ${isMine ? "is-mine" : "is-theirs"}`;
-    bubble.innerHTML = `
-      <div class="chat-bubble">${escapeHtml(msg.text)}</div>
-      <div class="chat-msg-meta">${new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>`;
+    bubble.innerHTML = `<div class="chat-bubble">${escapeHtml(msg.text)}</div><div class="chat-msg-meta">${new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour:"2-digit", minute:"2-digit" })}</div>`;
     chatMessages.appendChild(bubble);
   });
-
-  // Scroll to bottom
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 async function handleSendMessage() {
+  if (!chatMessageInput) return;
   const text = chatMessageInput.value.trim();
   if (!text || !activeChatUserId || !supabase || !authUser) return;
-
-  chatMessageInput.value = "";
-  chatMessageInput.style.height = "auto";
-
-  const { error } = await supabase.from("messages").insert({
-    from_user_id: authUser.id,
-    to_user_id: activeChatUserId,
-    text,
-    read: false
-  });
-
-  if (error) { console.error("Erro ao enviar mensagem:", error); return; }
+  chatMessageInput.value = ""; chatMessageInput.style.height = "auto";
+  const { error } = await supabase.from("messages").insert({ from_user_id: authUser.id, to_user_id: activeChatUserId, text, read: false });
+  if (error) { console.error("Erro ao enviar:", error); return; }
   await fetchAndRenderMessages();
   await loadConversations();
+}
+
+function updateChatBadges() {
+  const total = chatConversations.reduce((acc, c) => acc + (c.unread || 0), 0);
+  // Global badge in sidebar
+  if (globalUnreadBadge) {
+    globalUnreadBadge.textContent = total > 99 ? "99+" : total;
+    globalUnreadBadge.classList.toggle("hidden", total === 0);
+  }
+  // Floating bubble badge
+  if (chatToggleBadge) {
+    chatToggleBadge.textContent = total > 99 ? "99+" : total;
+    chatToggleBadge.classList.toggle("hidden", total === 0);
+  }
 }
 
 function startChatPoll() {
@@ -2354,93 +2342,22 @@ function startChatPoll() {
     await loadConversations();
   }, 5000);
 }
+function stopChatPoll() { if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; } }
 
-function stopChatPoll() {
-  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
-}
-
-function updateGlobalUnreadBadge() {
-  const total = chatConversations.reduce((acc, c) => acc + (c.unread || 0), 0);
-  if (total > 0) {
-    globalUnreadBadge.textContent = total > 99 ? "99+" : total;
-    globalUnreadBadge.classList.remove("hidden");
-  } else {
-    globalUnreadBadge.classList.add("hidden");
-  }
-}
-
-// Auto-resize chat textarea
-chatMessageInput?.addEventListener("input", function() {
-  this.style.height = "auto";
-  this.style.height = Math.min(this.scrollHeight, 100) + "px";
-});
-
-// ================================================================
-// PATCH: renderProjects — also calls renderNotifications after shared cards load
-// ================================================================
-const _origRenderProjects = renderProjects;
-// We patch after auth loads — renderNotifications is called in updateAuthUI via renderBoard
-
-// ================================================================
-// PATCH: openViewCardModal — participant chips open bio modal
-// ================================================================
-// This is injected via renderParticipantChips called inside openViewCardModal
-// We hook into the viewCardParticipants container after render
-
-const _origOpenViewCardModal = openViewCardModal;
-function openViewCardModal(cardId) {
-  _origOpenViewCardModal(cardId);
-  // After modal is rendered, make participant chips clickable for bio
-  setTimeout(() => patchParticipantChipsForBio(), 60);
-}
-
-function patchParticipantChipsForBio() {
-  const container = document.getElementById("viewCardParticipants");
-  if (!container) return;
-  container.querySelectorAll(".participant-chip").forEach(chip => {
-    if (chip.dataset.bioPatched) return;
-    chip.dataset.bioPatched = "1";
-    chip.classList.add("is-clickable-bio");
-    chip.title = "Ver perfil";
-    // We need user_id — find by name match in sharedCardsState or tempParticipants
-    const name = chip.textContent.trim();
-    chip.addEventListener("click", () => findAndOpenBioByName(name));
-  });
-}
-
-async function findAndOpenBioByName(displayName) {
-  if (!supabase) return;
-  // Try to find in profiles
-  const { data } = await supabase.from("profiles")
-    .select("user_id,full_name,email,avatar_url")
-    .ilike("full_name", `%${displayName.split(" ")[0]}%`)
-    .limit(5);
-  if (data?.length === 1) {
-    openUserBioModal(data[0].user_id);
-  } else if (data?.length > 1) {
-    // Find closest match
-    const match = data.find(p => (p.full_name || "").toLowerCase() === displayName.toLowerCase()) || data[0];
-    openUserBioModal(match.user_id);
-  }
-}
-
-// ================================================================
-// PATCH: handleSessionUser / updateAuthUI — trigger notifications
-// ================================================================
-const _origUpdateAuthUI = updateAuthUI;
+// After login, init chat and notifications
+const _baseUpdateAuthUI = updateAuthUI;
 function updateAuthUI(user) {
-  _origUpdateAuthUI(user);
-  // Render notifications after state is ready
-  setTimeout(renderNotifications, 200);
-  // Load conversations badge
-  if (user && supabase) setTimeout(loadConversations, 500);
-}
-
-// Patch loadSharedCards to also update notifications
-const _origLoadSharedCards = loadSharedCards;
-async function loadSharedCards() {
-  await _origLoadSharedCards();
-  setTimeout(renderNotifications, 100);
+  _baseUpdateAuthUI(user);
+  if (user && supabase) {
+    setTimeout(renderNotifications, 100);
+    setTimeout(loadConversations, 300);
+  } else {
+    // clear chat state on logout
+    chatConversations = []; activeChatUserId = null;
+    if (chatConvList) chatConvList.innerHTML = "";
+    if (chatMessages) chatMessages.innerHTML = "";
+    closeChatWindow();
+  }
 }
 
 }); // end DOMContentLoaded
