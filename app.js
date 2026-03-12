@@ -181,8 +181,8 @@ async function init() {
   renderProjects();
   renderBoard();
   bindEvents();
+  runIntroSplash();   // start immediately — don't wait for auth
   await initAuth();
-  runIntroSplash();
 }
 
 function hasPendingLoginWelcome() {
