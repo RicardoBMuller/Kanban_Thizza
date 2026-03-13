@@ -1568,7 +1568,18 @@ function openViewCardModal(cardId) {
   viewParticipantsCounter.textContent = `${participants.length}`;
   viewCardParticipants.innerHTML = "";
   if (participants.length) {
-    participants.forEach(p => { const chip = document.createElement("span"); chip.className = "participant-chip"; chip.textContent = participantDisplayName(p); viewCardParticipants.appendChild(chip); });
+    participants.forEach(p => {
+      const chip = document.createElement("span");
+      chip.className = "participant-chip";
+      chip.textContent = participantDisplayName(p);
+      if (p.user_id && supabase) {
+        chip.classList.add("is-clickable-bio");
+        chip.title = "Ver perfil";
+        chip.style.cursor = "pointer";
+        chip.addEventListener("click", (e) => { e.stopPropagation(); kqOpenBio(p.user_id); });
+      }
+      viewCardParticipants.appendChild(chip);
+    });
   } else { viewCardParticipants.innerHTML = `<div class="empty-state">Nenhum participante.</div>`; }
 
   // Checklist
@@ -1924,31 +1935,28 @@ let kqNotifItems = [];
 // DOM refs
 const kqNotifBtn      = document.getElementById("notifBtn");
 const kqNotifBadge    = document.getElementById("notifBadge");
-const kqNotifPanel    = document.getElementById("notifPanel");
+const kqNotifOverlay  = document.getElementById("notifOverlay");
 const kqNotifList     = document.getElementById("notifList");
 const kqNotifMarkAll  = document.getElementById("notifMarkAllBtn");
+const kqNotifCloseBtn = document.getElementById("notifCloseBtn");
 
-if (kqNotifBtn)   kqNotifBtn.addEventListener("click", e => { e.stopPropagation(); kqToggleNotif(); });
-if (kqNotifMarkAll) kqNotifMarkAll.addEventListener("click", kqMarkAllNotifRead);
-document.addEventListener("click", e => {
-  if (kqNotifOpen && kqNotifPanel && !kqNotifPanel.contains(e.target) && e.target !== kqNotifBtn)
-    kqCloseNotif();
-});
+if (kqNotifBtn)      kqNotifBtn.addEventListener("click", e => { e.stopPropagation(); kqToggleNotif(); });
+if (kqNotifMarkAll)  kqNotifMarkAll.addEventListener("click", kqMarkAllNotifRead);
+if (kqNotifCloseBtn) kqNotifCloseBtn.addEventListener("click", kqCloseNotif);
+if (kqNotifOverlay)  kqNotifOverlay.addEventListener("click", e => { if (e.target === kqNotifOverlay) kqCloseNotif(); });
 
 function kqToggleNotif() { kqNotifOpen ? kqCloseNotif() : kqOpenNotif(); }
 function kqOpenNotif() {
-  if (!kqNotifPanel || !kqNotifBtn) return;
-  // Position panel below the bell button
-  const rect = kqNotifBtn.getBoundingClientRect();
-  const panelW = 360;
-  const rightEdge = window.innerWidth - rect.right;
-  kqNotifPanel.style.top  = (rect.bottom + 8) + "px";
-  kqNotifPanel.style.right = Math.max(8, rightEdge - 8) + "px";
-  kqNotifPanel.style.left  = "auto";
-  kqNotifPanel.classList.add("is-open");
+  if (!kqNotifOverlay) return;
+  kqRenderNotifications();
+  openModal(kqNotifOverlay);
   kqNotifOpen = true;
 }
-function kqCloseNotif()  { if (!kqNotifPanel) return; kqNotifPanel.classList.remove("is-open"); kqNotifOpen = false; }
+function kqCloseNotif() {
+  if (!kqNotifOverlay) return;
+  closeModal(kqNotifOverlay);
+  kqNotifOpen = false;
+}
 
 function kqGetSeen()    { try { return new Set(JSON.parse(safeGetItem(NOTIF_SEEN_KEY)||"[]")); } catch { return new Set(); } }
 function kqSaveSeen(s)  { safeSetItem(NOTIF_SEEN_KEY, JSON.stringify([...s])); }
@@ -2072,42 +2080,9 @@ async function kqOpenBio(userId) {
 }
 function kqCloseBio() { closeModal(kqBioOverlay); }
 
-// Make participant chips clickable for bio — called after openViewCardModal renders
-function kqPatchBioChips() {
-  const cont = document.getElementById("viewCardParticipants");
-  if (!cont) return;
-  cont.querySelectorAll(".participant-chip:not([data-bio-patch])").forEach(chip => {
-    chip.dataset.bioPatch = "1";
-    chip.classList.add("is-clickable-bio");
-    chip.title = "Ver perfil";
-    chip.addEventListener("click", async () => {
-      if (!supabase) return;
-      const name = chip.textContent.replace(/[🤝👤\s]/g,"").trim();
-      if (!name) return;
-      const {data} = await supabase.from("profiles").select("user_id,full_name")
-        .ilike("full_name",`%${name}%`).limit(5);
-      if (!data?.length) return;
-      const match = data.find(p=>(p.full_name||"").toLowerCase()===name.toLowerCase())||data[0];
-      if (match) kqOpenBio(match.user_id);
-    });
-  });
-}
+// kqPatchBioChips removed — bio click now added directly in openViewCardModal
 
-// Intercept openViewCardModal to patch chips after render
-// We do this cleanly with a MutationObserver on the participants container
-(function() {
-  const orig = openViewCardModal;
-  window._kqOrigOpenViewCard = orig;
-})();
-
-// We cannot override openViewCardModal declared with function keyword inside closure.
-// Instead, observe the viewCardParticipants div for changes.
-(function() {
-  const el = document.getElementById("viewCardParticipants");
-  if (!el) return;
-  const obs = new MutationObserver(() => kqPatchBioChips());
-  obs.observe(el, {childList:true, subtree:true});
-})();
+// Bio chips are now patched directly inside openViewCardModal (see chip creation above)
 
 // ================================================================
 // ③ FLOATING CHAT WIDGET
@@ -2120,46 +2095,77 @@ let kqPollTimer   = null;
 let kqSearchTimer = null;
 
 // DOM refs
-const kqChatWidget  = document.getElementById("chatWidget");
-const kqChatWindow  = document.getElementById("chatWindow");
-const kqToggleBtn   = document.getElementById("chatToggleBtn");
-const kqToggleBadge = document.getElementById("chatToggleBadge");
-const kqWinClose    = document.getElementById("chatWindowCloseBtn");
-const kqConvList    = document.getElementById("chatConvList");
-const kqMsgsArea    = document.getElementById("chatMessages");
-const kqInputRow    = document.getElementById("chatInputRow");
-const kqMsgInput    = document.getElementById("chatMessageInput");
-const kqSendBtn     = document.getElementById("chatSendBtn");
-const kqSearchIn    = document.getElementById("chatSearchInput");
-const kqDropdown    = document.getElementById("chatUserDropdown");
-const kqSidebarBtn  = document.getElementById("openChatBtn");
-const kqMainHeader  = document.getElementById("chatMainHeader");
-const kqGlobalBadge = document.getElementById("globalUnreadBadge");
+const kqChatWidget   = document.getElementById("chatWidget");
+const kqChatWindow   = document.getElementById("chatWindow");
+const kqChatBackdrop = document.getElementById("chatBackdrop");
+const kqToggleBtn    = document.getElementById("chatToggleBtn");
+const kqWinClose     = document.getElementById("chatWindowCloseBtn");
+const kqConvList     = document.getElementById("chatConvList");
+const kqMsgsArea     = document.getElementById("chatMessages");
+const kqInputRow     = document.getElementById("chatInputRow");
+const kqMsgInput     = document.getElementById("chatMessageInput");
+const kqSendBtn      = document.getElementById("chatSendBtn");
+const kqSearchIn     = document.getElementById("chatSearchInput");
+const kqSearchWrap   = document.getElementById("chatSearchWrap");
+const kqSidebarBtn   = document.getElementById("openChatBtn");
+const kqMainHeader   = document.getElementById("chatMainHeader");
+const kqGlobalBadge  = document.getElementById("globalUnreadBadge");
+// Dropdown rendered in body (fixed position) to avoid overflow clipping
+let kqDropdown = null;
+function kqGetOrCreateDropdown() {
+  if (!kqDropdown) {
+    kqDropdown = document.createElement("div");
+    kqDropdown.id = "chatUserDropdown";
+    kqDropdown.className = "chat-user-dropdown";
+    kqDropdown.style.display = "none";
+    document.body.appendChild(kqDropdown);
+  }
+  return kqDropdown;
+}
 
-if (kqToggleBtn)  kqToggleBtn.addEventListener("click",  kqToggleChat);
-if (kqWinClose)   kqWinClose.addEventListener("click",   kqCloseChat);
-if (kqSidebarBtn) kqSidebarBtn.addEventListener("click", () => { if (!requireAuth("usar o chat")) return; kqOpenChat(); });
+if (kqToggleBtn)   kqToggleBtn.addEventListener("click",  kqToggleChat);
+if (kqWinClose)    kqWinClose.addEventListener("click",   kqCloseChat);
+if (kqSidebarBtn)  kqSidebarBtn.addEventListener("click", () => { if (!requireAuth("usar o chat")) return; kqOpenChat(); });
+if (kqChatBackdrop) kqChatBackdrop.addEventListener("click", kqCloseChat);
 if (kqSendBtn)    kqSendBtn.addEventListener("click",    kqSend);
 if (kqMsgInput)   kqMsgInput.addEventListener("keydown", e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();kqSend();} });
 if (kqMsgInput)   kqMsgInput.addEventListener("input",   function(){this.style.height="auto";this.style.height=Math.min(this.scrollHeight,90)+"px";});
-if (kqSearchIn)   kqSearchIn.addEventListener("input",   () => { clearTimeout(kqSearchTimer); const t=kqSearchIn.value.trim(); if(!t){kqDropdown&&(kqDropdown.style.display="none");return;} kqSearchTimer=setTimeout(()=>kqSearchUsers(t),300); });
-document.addEventListener("click", e => { if(kqDropdown&&!kqDropdown.contains(e.target)&&e.target!==kqSearchIn) kqDropdown.style.display="none"; });
+if (kqSearchIn) {
+  kqSearchIn.addEventListener("input", () => {
+    clearTimeout(kqSearchTimer);
+    const t = kqSearchIn.value.trim();
+    if (!t) { const dd = kqGetOrCreateDropdown(); dd.style.display="none"; return; }
+    kqSearchTimer = setTimeout(() => kqSearchUsers(t), 300);
+  });
+  kqSearchIn.addEventListener("focus", () => {
+    // Reposition dropdown under input on focus
+    if (kqSearchIn.value.trim()) kqSearchUsers(kqSearchIn.value.trim());
+  });
+}
+document.addEventListener("click", e => {
+  const dd = kqGetOrCreateDropdown();
+  if (dd.style.display !== "none" && !dd.contains(e.target) && e.target !== kqSearchIn)
+    dd.style.display = "none";
+});
 
 function kqToggleChat() { kqChatOpen ? kqCloseChat() : kqOpenChat(); }
 
 function kqOpenChat() {
   if (!authUser) return;
   kqChatOpen = true;
-  if (kqChatWindow) { kqChatWindow.classList.add("is-visible"); kqChatWindow.setAttribute("aria-hidden","false"); }
-  if (kqToggleBtn) { kqToggleBtn.textContent="✕"; kqToggleBtn.style.fontSize="20px"; }
+  if (kqChatWindow)   { kqChatWindow.classList.add("is-visible"); kqChatWindow.setAttribute("aria-hidden","false"); }
+  if (kqChatBackdrop) { kqChatBackdrop.style.display = "block"; requestAnimationFrame(() => kqChatBackdrop.classList.add("is-visible")); }
+  if (kqToggleBtn)    { kqToggleBtn.textContent="✕"; kqToggleBtn.style.fontSize="20px"; }
   kqLoadConversations();
   kqStartPoll();
 }
 
 function kqCloseChat() {
   kqChatOpen = false;
-  if (kqChatWindow) { kqChatWindow.classList.remove("is-visible"); kqChatWindow.setAttribute("aria-hidden","true"); }
-  if (kqToggleBtn) { kqToggleBtn.innerHTML=`💬<span id="chatToggleBadge" class="${(kqConvs.reduce((a,c)=>a+(c.unread||0),0))>0?"":" hidden"}" style="position:absolute;top:-2px;right:-2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-card)">${kqConvs.reduce((a,c)=>a+(c.unread||0),0)||""}</span>`; kqToggleBtn.style.fontSize="22px"; }
+  if (kqChatWindow)   { kqChatWindow.classList.remove("is-visible"); kqChatWindow.setAttribute("aria-hidden","true"); }
+  if (kqChatBackdrop) { kqChatBackdrop.classList.remove("is-visible"); setTimeout(() => { if(kqChatBackdrop) kqChatBackdrop.style.display="none"; }, 280); }
+  if (kqDropdown)     { kqDropdown.style.display = "none"; }
+  if (kqToggleBtn)    { kqToggleBtn.textContent="💬"; kqToggleBtn.style.fontSize="24px"; }
   kqStopPoll();
 }
 function closeChatWindow() { kqCloseChat(); } // alias used by logout patch
@@ -2171,21 +2177,47 @@ function kqOpenChatWith(userId, uname) {
 }
 
 async function kqSearchUsers(term) {
-  if (!supabase||!authUser) return;
+  if (!supabase || !authUser || !term) return;
+  const dd = kqGetOrCreateDropdown();
+  dd.innerHTML = `<div class="chat-user-result-item" style="color:var(--text-muted);cursor:default">Buscando...</div>`;
+  // Position dropdown under the search input
+  if (kqSearchWrap) {
+    const rect = kqSearchWrap.getBoundingClientRect();
+    dd.style.top    = (rect.bottom + 4) + "px";
+    dd.style.left   = rect.left + "px";
+    dd.style.width  = rect.width + "px";
+    dd.style.display = "block";
+  }
+  // Try RPC first, fallback to direct query
   let data = null;
-  const r = await supabase.rpc("search_profiles",{search_term:term});
-  if (!r.error) data=r.data;
-  else { const fb=await supabase.from("profiles").select("user_id,full_name,email,avatar_url").or(`full_name.ilike.%${term}%,email.ilike.%${term}%`).limit(8); data=fb.data; }
-  const res=(data||[]).filter(u=>u.user_id!==authUser.id);
-  if (!kqDropdown) return;
-  if (!res.length) { kqDropdown.style.display="none"; return; }
-  kqDropdown.innerHTML=""; kqDropdown.style.display="block";
+  try {
+    const r = await supabase.rpc("search_profiles", { search_term: term });
+    if (!r.error && r.data) data = r.data;
+  } catch(_) {}
+  if (!data) {
+    const fb = await supabase.from("profiles")
+      .select("user_id,full_name,email,avatar_url")
+      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`)
+      .limit(8);
+    data = fb.data;
+  }
+  const res = (data || []).filter(u => u.user_id !== authUser.id);
+  dd.innerHTML = "";
+  if (!res.length) {
+    dd.innerHTML = `<div class="chat-user-result-item" style="color:var(--text-muted);cursor:default">Nenhum usuário encontrado.</div>`;
+    return;
+  }
   res.forEach(u => {
-    const ini=getInitials(u.full_name||u.email||"?");
-    const row=document.createElement("div"); row.className="chat-user-result-item";
-    row.innerHTML=`${u.avatar_url?`<img class="chat-avatar-sm" src="${escapeHtml(u.avatar_url)}" alt="">` : `<div class="chat-avatar-sm">${escapeHtml(ini)}</div>`}<span>${escapeHtml(u.full_name||u.email||"Usuário")}</span>`;
-    row.addEventListener("click",()=>{ if(kqSearchIn) kqSearchIn.value=""; kqDropdown.style.display="none"; kqOpenConv(u.user_id,u.full_name||u.email||"Usuário"); });
-    kqDropdown.appendChild(row);
+    const ini = getInitials(u.full_name || u.email || "?");
+    const row = document.createElement("div");
+    row.className = "chat-user-result-item";
+    row.innerHTML = `${u.avatar_url ? `<img class="chat-avatar-sm" src="${escapeHtml(u.avatar_url)}" alt="">` : `<div class="chat-avatar-sm">${escapeHtml(ini)}</div>`}<span>${escapeHtml(u.full_name || u.email || "Usuário")}</span>`;
+    row.addEventListener("click", () => {
+      if (kqSearchIn) kqSearchIn.value = "";
+      dd.style.display = "none";
+      kqOpenConv(u.user_id, u.full_name || u.email || "Usuário");
+    });
+    dd.appendChild(row);
   });
 }
 
@@ -2294,11 +2326,21 @@ async function kqSend() {
 }
 
 function kqUpdateBadges() {
-  const total=kqConvs.reduce((a,c)=>a+(c.unread||0),0);
-  if (kqGlobalBadge) { kqGlobalBadge.textContent=total>99?"99+":total; kqGlobalBadge.classList.toggle("hidden",total===0); }
-  // Rebuild toggle button preserving icon
-  if (kqToggleBtn && !kqChatOpen) {
-    kqToggleBtn.innerHTML=`💬${total>0?`<span style="position:absolute;top:-2px;right:-2px;min-width:18px;height:18px;padding:0 4px;border-radius:99px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-card)">${total>99?"99+":total}</span>`:""}`;
+  const total = kqConvs.reduce((a, c) => a + (c.unread || 0), 0);
+  if (kqGlobalBadge) {
+    kqGlobalBadge.textContent = total > 99 ? "99+" : total;
+    kqGlobalBadge.classList.toggle("hidden", total === 0);
+  }
+  // Update the toggle button badge (it's a child span with class chat-toggle-badge)
+  let badge = kqToggleBtn?.querySelector(".chat-toggle-badge");
+  if (!badge && kqToggleBtn) {
+    badge = document.createElement("span");
+    badge.className = "chat-toggle-badge";
+    kqToggleBtn.appendChild(badge);
+  }
+  if (badge) {
+    badge.textContent = total > 99 ? "99+" : total;
+    badge.classList.toggle("hidden", total === 0);
   }
 }
 

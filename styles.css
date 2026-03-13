@@ -2195,45 +2195,28 @@ html[data-theme="light"] .project-actions-menu {
 @keyframes notif-pop { from { transform: scale(0); } to { transform: scale(1); } }
 
 /* Notification dropdown */
-.notif-panel {
-  position: fixed;
-  top: var(--notif-top, 68px);
-  right: 16px;
-  width: 360px;
-  max-height: 480px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 12px 48px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.2);
-  z-index: 9500;
+/* notif-panel converted to modal — uses .modal-overlay + .notif-modal-card */
+.notif-modal-card {
+  width: min(420px, 100%);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(-10px) scale(.96);
-  transition: opacity .2s, transform .2s cubic-bezier(.34,1.36,.64,1);
-  pointer-events: none;
-}
-.notif-panel.is-open {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
+  max-height: min(560px, 90vh);
+  overflow: hidden !important;
+  padding: 0 !important;
 }
 .notif-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px 12px;
+  padding: 18px 20px 14px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  background: var(--bg-card);
 }
 .notif-panel-header h4 {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   margin: 0;
   color: var(--text-primary);
-  letter-spacing: -.01em;
 }
 .notif-mark-all-btn {
   font-size: 11px;
@@ -2244,9 +2227,10 @@ html[data-theme="light"] .project-actions-menu {
   padding: 4px 8px;
   border-radius: 6px;
   transition: background .14s;
+  white-space: nowrap;
 }
 .notif-mark-all-btn:hover { background: var(--bg-hover); }
-.notif-list { overflow-y: auto; flex: 1; }
+.notif-list { overflow-y: auto; flex: 1; max-height: 420px; }
 .notif-item {
   display: flex;
   gap: 12px;
@@ -2432,10 +2416,15 @@ html[data-theme="light"] .project-actions-menu {
 .chat-search-wrap { position: relative; }
 .chat-search-wrap .input { font-size: 12px; padding: 7px 10px; }
 .chat-user-dropdown {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
-  max-height: 200px; overflow-y: auto; z-index: 10;
-  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  position: fixed;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 9200;
+  box-shadow: 0 8px 32px rgba(0,0,0,.35);
+  min-width: 200px;
 }
 .chat-user-result-item {
   display: flex; align-items: center; gap: 8px;
@@ -2544,3 +2533,19 @@ html[data-theme="light"] .project-actions-menu {
 .confirm-card h4 { font-size: 16px; font-weight: 700; color: var(--text-primary); margin: 0 0 10px; }
 .confirm-card p { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; line-height: 1.5; }
 .confirm-card-actions { display: flex; gap: 10px; justify-content: center; }
+
+/* ── Chat Backdrop ───────────────────────────────────────────── */
+.chat-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 14, 0.54);
+  backdrop-filter: blur(14px);
+  z-index: 8999;
+  opacity: 0;
+  transition: opacity .25s ease;
+  pointer-events: none;
+}
+.chat-backdrop.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}

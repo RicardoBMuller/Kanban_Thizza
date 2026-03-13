@@ -142,14 +142,19 @@
     </main>
   </div>
 
-  <!-- ── Notification Dropdown ──────────────────────────────────── -->
-  <div id="notifPanel" class="notif-panel" aria-hidden="true">
-    <div class="notif-panel-header">
-      <h4>🔔 Notificações</h4>
-      <button id="notifMarkAllBtn" class="notif-mark-all-btn" type="button">Marcar todas como lidas</button>
-    </div>
-    <div id="notifList" class="notif-list">
-      <div class="notif-empty">Nenhuma notificação.</div>
+  <!-- ── Notification Modal ───────────────────────────────────────── -->
+  <div id="notifOverlay" class="modal-overlay hidden" aria-hidden="true">
+    <div class="modal-card modal-sm notif-modal-card" role="dialog" aria-label="Notificações">
+      <div class="notif-panel-header">
+        <h4>🔔 Notificações</h4>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="notifMarkAllBtn" class="notif-mark-all-btn" type="button">Marcar todas como lidas</button>
+          <button id="notifCloseBtn" class="icon-btn" type="button">✕</button>
+        </div>
+      </div>
+      <div id="notifList" class="notif-list">
+        <div class="notif-empty"><span>🔔</span>Nenhuma notificação por enquanto.</div>
+      </div>
     </div>
   </div>
 
@@ -390,6 +395,9 @@
     </div>
   </div>
 
+  <!-- ── Chat Backdrop ─────────────────────────────────────────── -->
+  <div id="chatBackdrop" class="chat-backdrop" style="display:none"></div>
+
   <!-- ── Floating Chat Widget — bottom-right like GChat / Teams ── -->
   <div class="chat-widget" id="chatWidget" style="display:none">
     <div class="chat-window" id="chatWindow" aria-hidden="true">
@@ -397,9 +405,8 @@
       <div class="chat-sidebar">
         <div class="chat-sidebar-header">
           <h4>💬 Mensagens</h4>
-          <div class="chat-search-wrap">
+          <div class="chat-search-wrap" id="chatSearchWrap">
             <input id="chatSearchInput" class="input" type="text" placeholder="Buscar usuário..." autocomplete="off" />
-            <div id="chatUserDropdown" class="chat-user-dropdown" style="display:none"></div>
           </div>
         </div>
         <div id="chatConvList" class="chat-conv-list"></div>
