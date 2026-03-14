@@ -2118,14 +2118,16 @@ const kqMainHeader  = document.getElementById("chatMainHeader");
 const kqSidebarBadge = document.getElementById("sidebarUnreadBadge");
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 
-// Dropdown appended to <body> (fixed-position, avoids overflow clipping)
+// Dropdown is a child of kqSearchWrap (absolute-positioned, no overflow issues)
 let kqDropdown = null;
 function kqGetOrCreateDropdown() {
   if (!kqDropdown) {
     kqDropdown = document.createElement("div");
     kqDropdown.className = "chat-user-dropdown";
     kqDropdown.style.display = "none";
-    document.body.appendChild(kqDropdown);
+    // Append inside the search wrapper so position:absolute works correctly
+    if (kqSearchWrap) kqSearchWrap.appendChild(kqDropdown);
+    else document.body.appendChild(kqDropdown);
   }
   return kqDropdown;
 }
@@ -2200,13 +2202,7 @@ async function kqSearchUsers(term) {
   if (!supabase || !authUser || !term) return;
   const dd = kqGetOrCreateDropdown();
   dd.innerHTML = `<div class="chat-user-result-item" style="color:var(--text-muted);cursor:default">Buscando...</div>`;
-  if (kqSearchWrap) {
-    const rect = kqSearchWrap.getBoundingClientRect();
-    dd.style.top    = (rect.bottom + 4) + "px";
-    dd.style.left   = rect.left + "px";
-    dd.style.width  = rect.width + "px";
-    dd.style.display = "block";
-  }
+  dd.style.display = "block"; // CSS absolute positions it below the input automatically
   let data = null;
   try {
     const r = await supabase.rpc("search_profiles", { search_term: term });

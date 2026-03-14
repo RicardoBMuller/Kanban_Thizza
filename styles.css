@@ -2337,7 +2337,7 @@ html[data-theme="light"] .project-actions-menu {
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Sidebar chat section ───────────────────────────────────────── */
-.sidebar-chat-section { padding-bottom: 0 !important; }
+.sidebar-chat-section { padding-bottom: 0 !important; overflow: visible !important; }
 .sidebar-unread-badge {
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px;
   background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
@@ -2348,6 +2348,7 @@ html[data-theme="light"] .project-actions-menu {
 .sidebar-chat-search-wrap {
   padding: 8px 12px 6px;
   border-bottom: 1px solid var(--border);
+  position: relative; /* anchor for inline dropdown */
 }
 .sidebar-chat-input {
   font-size: 12.5px !important;
@@ -2398,15 +2399,17 @@ html[data-theme="light"] .project-actions-menu {
 
 /* Search dropdown — fixed-positioned, appended to body by JS */
 .chat-user-dropdown {
-  position: fixed;
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
-  max-height: 240px;
+  max-height: 220px;
   overflow-y: auto;
-  z-index: 9200;
-  box-shadow: 0 8px 32px rgba(0,0,0,.35);
-  min-width: 180px;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0,0,0,.3);
 }
 .chat-user-result-item {
   display: flex; align-items: center; gap: 8px;
