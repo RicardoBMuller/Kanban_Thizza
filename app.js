@@ -897,10 +897,12 @@ function updateAuthUI(user) {
     if (profileBioInput) profileBioInput.value = "";
   }
   // Show/hide auth-only elements
-  const notifBtnEl   = document.getElementById("notifBtn");
-  const chatWidgetEl = document.getElementById("chatWidget");
+  const notifBtnEl    = document.getElementById("notifBtn");
+  const chatWidgetEl  = document.getElementById("chatWidget");
+  const sidebarChatEl = document.getElementById("sidebarChatSection");
   if (notifBtnEl)    notifBtnEl.classList.toggle("hidden", !isLogged);
   if (chatWidgetEl)  chatWidgetEl.style.display = isLogged ? "" : "none";
+  if (sidebarChatEl) sidebarChatEl.classList.toggle("hidden", !isLogged);
   if (!isLogged)     { closeChatWindow(); }
 
   updateCreationAccess(); renderProjects(); renderBoard();
@@ -1854,7 +1856,13 @@ function closeModal(overlay) {
 // ============================================================
 function setTheme(theme) { document.documentElement.setAttribute("data-theme", theme); safeSetItem(THEME_KEY, theme); updateThemeButtons(theme); }
 function applySavedTheme() { const t = safeGetItem(THEME_KEY) || "dark"; document.documentElement.setAttribute("data-theme", t); updateThemeButtons(t); }
-function updateThemeButtons(theme) { lightBtn.classList.toggle("active", theme === "light"); darkBtn.classList.toggle("active", theme === "dark"); }
+function updateThemeButtons(theme) {
+  lightBtn.classList.toggle("active", theme === "light");
+  darkBtn.classList.toggle("active", theme === "dark");
+  // Update the floating theme FAB icon
+  const fabIcon = document.getElementById("themeToggleIcon");
+  if (fabIcon) fabIcon.textContent = theme === "dark" ? "☀️" : "🌙";
+}
 
 function isMobileViewport() { return window.innerWidth <= 980; }
 function openMobileSidebar()  { appShell.classList.add("mobile-sidebar-open"); appShell.classList.remove("sidebar-collapsed"); updateSidebarToggleButton(false); }
@@ -2085,7 +2093,7 @@ function kqCloseBio() { closeModal(kqBioOverlay); }
 // Bio chips are now patched directly inside openViewCardModal (see chip creation above)
 
 // ================================================================
-// ③ FLOATING CHAT WIDGET
+// ③ CHAT — GChat style: sidebar list + floating conversation
 // ================================================================
 let kqChatOpen    = false;
 let kqActiveUid   = null;
@@ -2095,27 +2103,26 @@ let kqPollTimer   = null;
 let kqSearchTimer = null;
 
 // DOM refs
-const kqChatWidget   = document.getElementById("chatWidget");
-const kqChatWindow   = document.getElementById("chatWindow");
-const kqChatBackdrop = document.getElementById("chatBackdrop");
-const kqToggleBtn    = document.getElementById("chatToggleBtn");
-const kqWinClose     = document.getElementById("chatWindowCloseBtn");
-const kqConvList     = document.getElementById("chatConvList");
-const kqMsgsArea     = document.getElementById("chatMessages");
-const kqInputRow     = document.getElementById("chatInputRow");
-const kqMsgInput     = document.getElementById("chatMessageInput");
-const kqSendBtn      = document.getElementById("chatSendBtn");
-const kqSearchIn     = document.getElementById("chatSearchInput");
-const kqSearchWrap   = document.getElementById("chatSearchWrap");
-const kqSidebarBtn   = document.getElementById("openChatBtn");
-const kqMainHeader   = document.getElementById("chatMainHeader");
-const kqGlobalBadge  = document.getElementById("globalUnreadBadge");
-// Dropdown rendered in body (fixed position) to avoid overflow clipping
+const kqChatWidget  = document.getElementById("chatWidget");
+const kqChatWindow  = document.getElementById("chatWindow");
+const kqToggleBtn   = document.getElementById("chatToggleBtn");
+const kqWinClose    = document.getElementById("chatWindowCloseBtn");
+const kqConvList    = document.getElementById("chatConvList");    // now inside left sidebar
+const kqMsgsArea    = document.getElementById("chatMessages");
+const kqInputRow    = document.getElementById("chatInputRow");
+const kqMsgInput    = document.getElementById("chatMessageInput");
+const kqSendBtn     = document.getElementById("chatSendBtn");
+const kqSearchIn    = document.getElementById("chatSearchInput"); // in left sidebar
+const kqSearchWrap  = document.getElementById("chatSearchWrap");
+const kqMainHeader  = document.getElementById("chatMainHeader");
+const kqSidebarBadge = document.getElementById("sidebarUnreadBadge");
+const themeToggleBtn = document.getElementById("themeToggleBtn");
+
+// Dropdown appended to <body> (fixed-position, avoids overflow clipping)
 let kqDropdown = null;
 function kqGetOrCreateDropdown() {
   if (!kqDropdown) {
     kqDropdown = document.createElement("div");
-    kqDropdown.id = "chatUserDropdown";
     kqDropdown.className = "chat-user-dropdown";
     kqDropdown.style.display = "none";
     document.body.appendChild(kqDropdown);
@@ -2123,22 +2130,35 @@ function kqGetOrCreateDropdown() {
   return kqDropdown;
 }
 
-if (kqToggleBtn)   kqToggleBtn.addEventListener("click",  kqToggleChat);
-if (kqWinClose)    kqWinClose.addEventListener("click",   kqCloseChat);
-if (kqSidebarBtn)  kqSidebarBtn.addEventListener("click", () => { if (!requireAuth("usar o chat")) return; kqOpenChat(); });
-if (kqChatBackdrop) kqChatBackdrop.addEventListener("click", kqCloseChat);
-if (kqSendBtn)    kqSendBtn.addEventListener("click",    kqSend);
-if (kqMsgInput)   kqMsgInput.addEventListener("keydown", e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();kqSend();} });
-if (kqMsgInput)   kqMsgInput.addEventListener("input",   function(){this.style.height="auto";this.style.height=Math.min(this.scrollHeight,90)+"px";});
+// ── Theme FAB ────────────────────────────────────────────────────
+if (themeToggleBtn) {
+  // Set initial icon
+  const savedTheme = safeGetItem(THEME_KEY) || "dark";
+  const fabIcon = document.getElementById("themeToggleIcon");
+  if (fabIcon) fabIcon.textContent = savedTheme === "dark" ? "☀️" : "🌙";
+
+  themeToggleBtn.addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme") || "dark";
+    setTheme(current === "dark" ? "light" : "dark");
+  });
+}
+
+// ── Events ───────────────────────────────────────────────────────
+if (kqToggleBtn) kqToggleBtn.addEventListener("click", kqToggleChat);
+if (kqWinClose)  kqWinClose.addEventListener("click",  kqCloseChat);
+if (kqSendBtn)   kqSendBtn.addEventListener("click",   kqSend);
+if (kqMsgInput) {
+  kqMsgInput.addEventListener("keydown", e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();kqSend();} });
+  kqMsgInput.addEventListener("input", function(){ this.style.height="auto"; this.style.height=Math.min(this.scrollHeight,90)+"px"; });
+}
 if (kqSearchIn) {
   kqSearchIn.addEventListener("input", () => {
     clearTimeout(kqSearchTimer);
     const t = kqSearchIn.value.trim();
-    if (!t) { const dd = kqGetOrCreateDropdown(); dd.style.display="none"; return; }
+    if (!t) { kqGetOrCreateDropdown().style.display="none"; return; }
     kqSearchTimer = setTimeout(() => kqSearchUsers(t), 300);
   });
   kqSearchIn.addEventListener("focus", () => {
-    // Reposition dropdown under input on focus
     if (kqSearchIn.value.trim()) kqSearchUsers(kqSearchIn.value.trim());
   });
 }
@@ -2148,39 +2168,38 @@ document.addEventListener("click", e => {
     dd.style.display = "none";
 });
 
+// ── Toggle / open / close ─────────────────────────────────────────
 function kqToggleChat() { kqChatOpen ? kqCloseChat() : kqOpenChat(); }
 
 function kqOpenChat() {
   if (!authUser) return;
   kqChatOpen = true;
-  if (kqChatWindow)   { kqChatWindow.classList.add("is-visible"); kqChatWindow.setAttribute("aria-hidden","false"); }
-  if (kqChatBackdrop) { kqChatBackdrop.style.display = "block"; requestAnimationFrame(() => kqChatBackdrop.classList.add("is-visible")); }
-  if (kqToggleBtn)    { kqToggleBtn.textContent="✕"; kqToggleBtn.style.fontSize="20px"; }
-  kqLoadConversations();
+  if (kqChatWindow) { kqChatWindow.classList.add("is-visible"); kqChatWindow.setAttribute("aria-hidden","false"); }
+  if (kqToggleBtn)  { kqToggleBtn.textContent="✕"; kqToggleBtn.style.fontSize="20px"; }
   kqStartPoll();
 }
 
 function kqCloseChat() {
   kqChatOpen = false;
-  if (kqChatWindow)   { kqChatWindow.classList.remove("is-visible"); kqChatWindow.setAttribute("aria-hidden","true"); }
-  if (kqChatBackdrop) { kqChatBackdrop.classList.remove("is-visible"); setTimeout(() => { if(kqChatBackdrop) kqChatBackdrop.style.display="none"; }, 280); }
-  if (kqDropdown)     { kqDropdown.style.display = "none"; }
-  if (kqToggleBtn)    { kqToggleBtn.textContent="💬"; kqToggleBtn.style.fontSize="24px"; }
+  if (kqChatWindow) { kqChatWindow.classList.remove("is-visible"); kqChatWindow.setAttribute("aria-hidden","true"); }
+  if (kqDropdown)   kqDropdown.style.display = "none";
+  if (kqToggleBtn)  { kqToggleBtn.textContent="💬"; kqToggleBtn.style.fontSize="24px"; }
   kqStopPoll();
 }
-function closeChatWindow() { kqCloseChat(); } // alias used by logout patch
+function closeChatWindow() { kqCloseChat(); }
 
+// Called from bio modal button — open chat with specific user
 function kqOpenChatWith(userId, uname) {
   if (!requireAuth("usar o chat")) return;
+  kqOpenConv(userId, uname || "");
   if (!kqChatOpen) kqOpenChat();
-  setTimeout(() => kqOpenConv(userId, uname||""), 350);
 }
 
+// ── Search users ──────────────────────────────────────────────────
 async function kqSearchUsers(term) {
   if (!supabase || !authUser || !term) return;
   const dd = kqGetOrCreateDropdown();
   dd.innerHTML = `<div class="chat-user-result-item" style="color:var(--text-muted);cursor:default">Buscando...</div>`;
-  // Position dropdown under the search input
   if (kqSearchWrap) {
     const rect = kqSearchWrap.getBoundingClientRect();
     dd.style.top    = (rect.bottom + 4) + "px";
@@ -2188,7 +2207,6 @@ async function kqSearchUsers(term) {
     dd.style.width  = rect.width + "px";
     dd.style.display = "block";
   }
-  // Try RPC first, fallback to direct query
   let data = null;
   try {
     const r = await supabase.rpc("search_profiles", { search_term: term });
@@ -2211,38 +2229,44 @@ async function kqSearchUsers(term) {
     const ini = getInitials(u.full_name || u.email || "?");
     const row = document.createElement("div");
     row.className = "chat-user-result-item";
-    row.innerHTML = `${u.avatar_url ? `<img class="chat-avatar-sm" src="${escapeHtml(u.avatar_url)}" alt="">` : `<div class="chat-avatar-sm">${escapeHtml(ini)}</div>`}<span>${escapeHtml(u.full_name || u.email || "Usuário")}</span>`;
+    row.innerHTML = `${u.avatar_url?`<img class="chat-avatar-sm" src="${escapeHtml(u.avatar_url)}" alt="">` : `<div class="chat-avatar-sm">${escapeHtml(ini)}</div>`}<span>${escapeHtml(u.full_name||u.email||"Usuário")}</span>`;
     row.addEventListener("click", () => {
       if (kqSearchIn) kqSearchIn.value = "";
       dd.style.display = "none";
       kqOpenConv(u.user_id, u.full_name || u.email || "Usuário");
+      if (!kqChatOpen) kqOpenChat();
     });
     dd.appendChild(row);
   });
 }
 
+// ── Load & render conversations (into sidebar) ────────────────────
 async function kqLoadConversations() {
-  if (!supabase||!authUser||!kqConvList) return;
-  const {data,error}=await supabase.from("messages").select("*")
+  if (!supabase || !authUser) return;
+  const {data, error} = await supabase.from("messages").select("*")
     .or(`from_user_id.eq.${authUser.id},to_user_id.eq.${authUser.id}`)
-    .order("created_at",{ascending:false});
+    .order("created_at", {ascending: false});
   if (error) return;
 
-  const map=new Map();
-  (data||[]).forEach(msg=>{
-    const pid=msg.from_user_id===authUser.id?msg.to_user_id:msg.from_user_id;
-    if(!map.has(pid)) map.set(pid,{lastMsg:msg.text,lastTime:msg.created_at,unread:0});
-    if(msg.to_user_id===authUser.id&&!msg.read) map.get(pid).unread++;
+  const map = new Map();
+  (data || []).forEach(msg => {
+    const pid = msg.from_user_id === authUser.id ? msg.to_user_id : msg.from_user_id;
+    if (!map.has(pid)) map.set(pid, {lastMsg: msg.text, lastTime: msg.created_at, unread: 0});
+    if (msg.to_user_id === authUser.id && !msg.read) map.get(pid).unread++;
   });
 
-  const ids=[...map.keys()];
-  let profs={};
-  if(ids.length){const{data:ps}=await supabase.from("profiles").select("user_id,full_name,email,avatar_url").in("user_id",ids);(ps||[]).forEach(p=>{profs[p.user_id]=p;});}
+  const ids = [...map.keys()];
+  let profs = {};
+  if (ids.length) {
+    const {data: ps} = await supabase.from("profiles")
+      .select("user_id,full_name,email,avatar_url").in("user_id", ids);
+    (ps || []).forEach(p => { profs[p.user_id] = p; });
+  }
 
-  kqConvs=[...map.entries()].map(([uid,c])=>{
-    const p=profs[uid]||{};
-    return{...c,userId:uid,name:p.full_name||p.email||uid,email:p.email||"",avatarUrl:p.avatar_url||""};
-  }).sort((a,b)=>new Date(b.lastTime)-new Date(a.lastTime));
+  kqConvs = [...map.entries()].map(([uid, c]) => {
+    const p = profs[uid] || {};
+    return {...c, userId: uid, name: p.full_name||p.email||uid, email: p.email||"", avatarUrl: p.avatar_url||""};
+  }).sort((a,b) => new Date(b.lastTime) - new Date(a.lastTime));
 
   kqRenderConvList();
   kqUpdateBadges();
@@ -2250,88 +2274,117 @@ async function kqLoadConversations() {
 
 function kqRenderConvList() {
   if (!kqConvList) return;
-  if (!kqConvs.length) { kqConvList.innerHTML=`<div class="chat-conv-empty">Nenhuma conversa.<br>Busque um usuário acima.</div>`; return; }
-  kqConvList.innerHTML="";
-  kqConvs.forEach(c=>{
-    const ini=getInitials(c.name);
-    const row=document.createElement("div");
-    row.className=`chat-conv-item${c.userId===kqActiveUid?" is-active":""}`;
-    row.innerHTML=`${c.avatarUrl?`<img class="chat-conv-avatar" src="${escapeHtml(c.avatarUrl)}" alt="">` : `<div class="chat-conv-avatar">${escapeHtml(ini)}</div>`}
-      <div class="chat-conv-copy"><strong>${escapeHtml(c.name)}</strong><span>${escapeHtml(truncate(c.lastMsg||"",32))}</span></div>
-      ${c.unread>0?`<span class="chat-conv-unread">${c.unread}</span>`:""}`;
-    row.addEventListener("click",()=>kqOpenConv(c.userId,c.name));
-    // Avatar click → bio
-    row.querySelector(".chat-conv-avatar, img.chat-conv-avatar")?.addEventListener("click", e=>{e.stopPropagation();kqOpenBio(c.userId);});
+  if (!kqConvs.length) {
+    kqConvList.innerHTML = `<div class="chat-conv-empty">Nenhuma conversa ainda.<br>Busque um usuário acima.</div>`;
+    return;
+  }
+  kqConvList.innerHTML = "";
+  kqConvs.forEach(c => {
+    const ini = getInitials(c.name);
+    const row = document.createElement("div");
+    row.className = `chat-conv-item${c.userId === kqActiveUid ? " is-active" : ""}`;
+    row.innerHTML = `
+      ${c.avatarUrl ? `<img class="chat-conv-avatar" src="${escapeHtml(c.avatarUrl)}" alt="" style="cursor:pointer" title="Ver perfil">` : `<div class="chat-conv-avatar" style="cursor:pointer" title="Ver perfil">${escapeHtml(ini)}</div>`}
+      <div class="chat-conv-copy">
+        <strong>${escapeHtml(c.name)}</strong>
+        <span>${escapeHtml(truncate(c.lastMsg||"", 30))}</span>
+      </div>
+      ${c.unread > 0 ? `<span class="chat-conv-unread">${c.unread}</span>` : ""}`;
+    // Click on row → open conversation
+    row.addEventListener("click", () => {
+      kqOpenConv(c.userId, c.name);
+      if (!kqChatOpen) kqOpenChat();
+    });
+    // Click on avatar → bio modal
+    row.querySelector(".chat-conv-avatar")?.addEventListener("click", e => {
+      e.stopPropagation();
+      kqOpenBio(c.userId);
+    });
     kqConvList.appendChild(row);
   });
 }
 
+// ── Open a specific conversation (floating window) ────────────────
 async function kqOpenConv(userId, uname) {
   kqActiveUid   = userId;
-  kqActiveUname = uname || kqConvs.find(c=>c.userId===userId)?.name || "Usuário";
-  const conv    = kqConvs.find(c=>c.userId===userId);
+  kqActiveUname = uname || kqConvs.find(c => c.userId === userId)?.name || "Usuário";
+  const conv    = kqConvs.find(c => c.userId === userId);
   const ini     = getInitials(kqActiveUname);
-  const av      = conv?.avatarUrl||"";
+  const av      = conv?.avatarUrl || "";
 
   if (kqMainHeader) {
-    kqMainHeader.innerHTML=`
+    kqMainHeader.innerHTML = `
       <div class="chat-main-header-avatar-wrap" style="cursor:pointer" title="Ver perfil">
-        ${av?`<img class="chat-main-header-avatar" src="${escapeHtml(av)}" alt="">` : `<div class="chat-main-header-avatar">${escapeHtml(ini)}</div>`}
+        ${av ? `<img class="chat-main-header-avatar" src="${escapeHtml(av)}" alt="">` : `<div class="chat-main-header-avatar">${escapeHtml(ini)}</div>`}
       </div>
-      <div class="chat-main-info"><strong>${escapeHtml(kqActiveUname)}</strong><span>${escapeHtml(conv?.email||"")}</span></div>
-      <button class="chat-close-btn" id="kqWinCloseInner" type="button">✕</button>`;
+      <div class="chat-main-info">
+        <strong>${escapeHtml(kqActiveUname)}</strong>
+        <span>${escapeHtml(conv?.email || "")}</span>
+      </div>
+      <button class="chat-close-btn" id="kqWinCloseInner" type="button" title="Fechar">✕</button>`;
     kqMainHeader.querySelector("#kqWinCloseInner")?.addEventListener("click", kqCloseChat);
-    kqMainHeader.querySelector(".chat-main-header-avatar-wrap")?.addEventListener("click", ()=>kqOpenBio(userId));
+    kqMainHeader.querySelector(".chat-main-header-avatar-wrap")?.addEventListener("click", () => kqOpenBio(userId));
   }
 
-  if (kqInputRow) kqInputRow.style.display="";
-  if (kqMsgsArea) kqMsgsArea.innerHTML=`<div class="chat-loading-msg">Carregando...</div>`;
-  kqRenderConvList();
+  if (kqInputRow) kqInputRow.style.display = "";
+  if (kqMsgsArea) kqMsgsArea.innerHTML = `<div class="chat-loading-msg">Carregando...</div>`;
+  kqRenderConvList(); // highlight active in sidebar
   await kqFetchMessages();
 
-  // Mark read
-  if (supabase&&authUser) supabase.from("messages").update({read:true}).eq("from_user_id",userId).eq("to_user_id",authUser.id).eq("read",false).then(()=>kqLoadConversations());
+  if (supabase && authUser)
+    supabase.from("messages").update({read: true})
+      .eq("from_user_id", userId).eq("to_user_id", authUser.id).eq("read", false)
+      .then(() => kqLoadConversations());
   if (kqMsgInput) kqMsgInput.focus();
 }
 
 async function kqFetchMessages() {
-  if (!supabase||!authUser||!kqActiveUid||!kqMsgsArea) return;
-  const {data,error}=await supabase.from("messages").select("*")
+  if (!supabase || !authUser || !kqActiveUid || !kqMsgsArea) return;
+  const {data, error} = await supabase.from("messages").select("*")
     .or(`and(from_user_id.eq.${authUser.id},to_user_id.eq.${kqActiveUid}),and(from_user_id.eq.${kqActiveUid},to_user_id.eq.${authUser.id})`)
-    .order("created_at",{ascending:true});
-  if(error) return;
-  const msgs=data||[];
-  if(!msgs.length){kqMsgsArea.innerHTML=`<div class="chat-no-conv-state"><span>👋</span>Inicie uma conversa!</div>`;return;}
-  kqMsgsArea.innerHTML="";
-  let lastDate="";
-  msgs.forEach(msg=>{
-    const ds=new Date(msg.created_at).toLocaleDateString("pt-BR");
-    if(ds!==lastDate){const d=document.createElement("div");d.className="chat-date-divider";d.textContent=ds;kqMsgsArea.appendChild(d);lastDate=ds;}
-    const mine=msg.from_user_id===authUser.id;
-    const b=document.createElement("div"); b.className=`chat-msg ${mine?"is-mine":"is-theirs"}`;
-    b.innerHTML=`<div class="chat-bubble">${escapeHtml(msg.text)}</div><div class="chat-msg-meta">${new Date(msg.created_at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>`;
+    .order("created_at", {ascending: true});
+  if (error) return;
+  const msgs = data || [];
+  if (!msgs.length) {
+    kqMsgsArea.innerHTML = `<div class="chat-no-conv-state"><span>👋</span>Inicie a conversa!</div>`;
+    return;
+  }
+  kqMsgsArea.innerHTML = "";
+  let lastDate = "";
+  msgs.forEach(msg => {
+    const ds = new Date(msg.created_at).toLocaleDateString("pt-BR");
+    if (ds !== lastDate) {
+      const d = document.createElement("div");
+      d.className = "chat-date-divider"; d.textContent = ds;
+      kqMsgsArea.appendChild(d); lastDate = ds;
+    }
+    const mine = msg.from_user_id === authUser.id;
+    const b = document.createElement("div");
+    b.className = `chat-msg ${mine ? "is-mine" : "is-theirs"}`;
+    b.innerHTML = `<div class="chat-bubble">${escapeHtml(msg.text)}</div><div class="chat-msg-meta">${new Date(msg.created_at).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</div>`;
     kqMsgsArea.appendChild(b);
   });
-  kqMsgsArea.scrollTop=kqMsgsArea.scrollHeight;
+  kqMsgsArea.scrollTop = kqMsgsArea.scrollHeight;
 }
 
 async function kqSend() {
   if (!kqMsgInput) return;
-  const text=kqMsgInput.value.trim();
-  if (!text||!kqActiveUid||!supabase||!authUser) return;
-  kqMsgInput.value=""; kqMsgInput.style.height="auto";
-  await supabase.from("messages").insert({from_user_id:authUser.id,to_user_id:kqActiveUid,text,read:false});
+  const text = kqMsgInput.value.trim();
+  if (!text || !kqActiveUid || !supabase || !authUser) return;
+  kqMsgInput.value = ""; kqMsgInput.style.height = "auto";
+  await supabase.from("messages").insert({from_user_id: authUser.id, to_user_id: kqActiveUid, text, read: false});
   await kqFetchMessages();
   await kqLoadConversations();
 }
 
 function kqUpdateBadges() {
   const total = kqConvs.reduce((a, c) => a + (c.unread || 0), 0);
-  if (kqGlobalBadge) {
-    kqGlobalBadge.textContent = total > 99 ? "99+" : total;
-    kqGlobalBadge.classList.toggle("hidden", total === 0);
+  // Sidebar badge
+  if (kqSidebarBadge) {
+    kqSidebarBadge.textContent = total > 99 ? "99+" : total;
+    kqSidebarBadge.classList.toggle("hidden", total === 0);
   }
-  // Update the toggle button badge (it's a child span with class chat-toggle-badge)
+  // Floating bubble badge
   let badge = kqToggleBtn?.querySelector(".chat-toggle-badge");
   if (!badge && kqToggleBtn) {
     badge = document.createElement("span");
@@ -2344,9 +2397,15 @@ function kqUpdateBadges() {
   }
 }
 
-function kqStartPoll() { kqStopPoll(); kqPollTimer=setInterval(async()=>{ if(kqActiveUid)await kqFetchMessages(); await kqLoadConversations(); },5000); }
-function kqStopPoll()  { if(kqPollTimer){clearInterval(kqPollTimer);kqPollTimer=null;} }
-function stopChatPoll(){ kqStopPoll(); } // alias used by logout patch
+function kqStartPoll() {
+  kqStopPoll();
+  kqPollTimer = setInterval(async () => {
+    if (kqActiveUid) await kqFetchMessages();
+    await kqLoadConversations();
+  }, 5000);
+}
+function kqStopPoll()  { if (kqPollTimer) { clearInterval(kqPollTimer); kqPollTimer = null; } }
+function stopChatPoll(){ kqStopPoll(); }
 
 
 }); // end DOMContentLoaded

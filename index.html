@@ -77,13 +77,22 @@
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-header"><span>Tema</span></div>
-        <div class="theme-switch">
-          <button id="lightBtn" class="btn btn-soft theme-btn">Claro</button>
-          <button id="darkBtn" class="btn btn-soft theme-btn active">Escuro</button>
+      <!-- Chat sidebar section — visible only when logged in -->
+      <section class="panel sidebar-chat-section hidden" id="sidebarChatSection">
+        <div class="panel-header">
+          <span>💬 Mensagens</span>
+          <span id="sidebarUnreadBadge" class="sidebar-unread-badge hidden">0</span>
         </div>
+        <div class="sidebar-chat-search-wrap" id="chatSearchWrap">
+          <input id="chatSearchInput" class="input sidebar-chat-input" type="text"
+                 placeholder="Buscar usuário..." autocomplete="off" />
+        </div>
+        <div id="chatConvList" class="sidebar-conv-list"></div>
       </section>
+
+      <!-- Hidden theme buttons kept for JS compat -->
+      <button id="lightBtn" style="display:none" aria-hidden="true"></button>
+      <button id="darkBtn"  style="display:none" aria-hidden="true"></button>
     </aside>
 
     <main class="main-area">
@@ -395,23 +404,15 @@
     </div>
   </div>
 
-  <!-- ── Chat Backdrop ─────────────────────────────────────────── -->
-  <div id="chatBackdrop" class="chat-backdrop" style="display:none"></div>
+  <!-- ── Theme FAB — always visible, bottom-right ──────────────── -->
+  <button id="themeToggleBtn" class="theme-fab" type="button" aria-label="Alternar tema" title="Claro / Escuro">
+    <span id="themeToggleIcon">🌙</span>
+  </button>
 
-  <!-- ── Floating Chat Widget — bottom-right like GChat / Teams ── -->
+  <!-- ── Floating Chat — only conversation panel, no left sidebar ─ -->
   <div class="chat-widget" id="chatWidget" style="display:none">
-    <div class="chat-window" id="chatWindow" aria-hidden="true">
-      <!-- Left: conversation list -->
-      <div class="chat-sidebar">
-        <div class="chat-sidebar-header">
-          <h4>💬 Mensagens</h4>
-          <div class="chat-search-wrap" id="chatSearchWrap">
-            <input id="chatSearchInput" class="input" type="text" placeholder="Buscar usuário..." autocomplete="off" />
-          </div>
-        </div>
-        <div id="chatConvList" class="chat-conv-list"></div>
-      </div>
-      <!-- Right: active conversation -->
+    <!-- Conversation window (opens above the bubble) -->
+    <div class="chat-window chat-conv-only" id="chatWindow" aria-hidden="true">
       <div class="chat-main">
         <div class="chat-main-header" id="chatMainHeader">
           <span class="chat-no-conv-header">Selecione uma conversa</span>
@@ -420,7 +421,7 @@
         <div id="chatMessages" class="chat-messages">
           <div class="chat-no-conv-state">
             <span>💬</span>
-            Selecione uma conversa ou busque um usuário para começar.
+            Selecione um contato no painel esquerdo.
           </div>
         </div>
         <div id="chatInputRow" class="chat-input-row" style="display:none">
@@ -432,7 +433,7 @@
     <!-- Toggle bubble -->
     <button class="chat-toggle-btn" id="chatToggleBtn" type="button" aria-label="Mensagens" title="Mensagens">
       💬
-      <span id="chatToggleBadge" class="chat-toggle-badge hidden">0</span>
+      <span class="chat-toggle-badge hidden" id="chatToggleBadge"></span>
     </button>
   </div>
 
