@@ -243,7 +243,9 @@ function bindEvents() {
   });
 
   on(projectModalOverlay, "click", e => { if (e.target === projectModalOverlay) closeProjectModal(); });
-  on(cardModalOverlay, "click", e => { if (e.target === cardModalOverlay) closeCardModal(); });
+  // Evita fechamento acidental do modal do card enquanto o usuário está digitando,
+  // buscando participantes ou clicando em elementos que podem ficar próximos da borda.
+  on(cardModalOverlay, "click", e => { if (e.target === cardModalOverlay) e.stopPropagation(); });
   on(viewCardModalOverlay, "click", e => { if (e.target === viewCardModalOverlay) closeViewCardModal(); });
   on(authModalOverlay, "click", e => { if (e.target === authModalOverlay) closeAuthModal(); });
   on(profileModalOverlay, "click", e => { if (e.target === profileModalOverlay) closeProfileModal(); });
@@ -1496,7 +1498,11 @@ function injectParticipantNotice(isParticipant) {
   modalBody.insertBefore(notice, modalBody.firstChild);
 }
 
-function closeCardModal() { closeModal(cardModalOverlay); }
+function closeCardModal() {
+  participantSearchResults = [];
+  renderParticipantSearchResults();
+  closeModal(cardModalOverlay);
+}
 
 async function handleSaveCard() {
   if (!requireAuth("salvar cards")) return;
@@ -1549,24 +1555,30 @@ async function handleSaveCard() {
 async function handleDeleteCard() {
   if (!requireAuth("excluir cards")) return;
   if (!currentEditingCardId) return;
-  // Participants cannot delete
   if (isSharedCard(currentEditingCardId)) { alert("Participantes não podem excluir cards."); return; }
+
   const ok = confirm("Deseja excluir este card?");
   if (!ok) return;
+
   const project = getCurrentProject();
   if (!project) return;
+
   const found = findCard(currentEditingCardId);
   if (!found) return;
+
+  const previousColumnCards = [...project.columns[found.columnId]];
   project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== currentEditingCardId);
+
   try {
-    await persistProjectToCloud(project);
-    const targetPosition = project.columns[currentTargetColumn].findIndex(card => card.id === cardData.id);
-    await persistCardToCloud(cardData, project.id, currentTargetColumn, targetPosition);
+    await deleteCardFromCloud(currentEditingCardId);
     await persistProjectCardsOrder(project);
-    saveState(); renderBoard(); closeCardModal();
+    saveState();
+    renderBoard();
+    closeCardModal();
   } catch (error) {
-    console.error("Erro ao salvar card:", error);
-    alert("Não foi possível salvar o card online.");
+    project.columns[found.columnId] = previousColumnCards;
+    console.error("Erro ao excluir card:", error);
+    alert("Não foi possível excluir o card online.");
   }
 }
 
