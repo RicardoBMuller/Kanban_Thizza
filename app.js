@@ -18,13 +18,8 @@ const defaultColumns = () => ({ todo: [], doing: [], done: [] });
 // ============================================================
 // ESTADO GLOBAL
 // ============================================================
-let state          = loadState();
-let currentProjectId = state.currentProjectId || null;
-
-if (currentProjectId && !state.projects.find(p => p.id === currentProjectId)) {
-  currentProjectId = state.projects[0]?.id || null;
-  saveState();
-}
+let state          = { currentProjectId: null, projects: [] };
+let currentProjectId = null;
 
 let currentEditingCardId = null;
 let currentTargetColumn  = "todo";
@@ -185,9 +180,7 @@ async function init() {
   await initAuth();
 }
 
-function hasPendingLoginWelcome() {
-  try { return sessionStorage.getItem(LOGIN_WELCOME_PENDING_KEY) === "1"; } catch(_) { return false; }
-}
+function hasPendingLoginWelcome() { return false; }
 
 function runIntroSplash() {
   const splash = document.getElementById("introSplash");
@@ -340,7 +333,6 @@ async function handleSessionUser(sessionUser, { showWelcome = false } = {}) {
     profileRecord = null;
     clearDataForSignedOutUser();
     authUser = null;
-    try { sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch(_) {}
     updateAuthUI(null);
     return;
   }
@@ -711,130 +703,190 @@ function clearDataForSignedOutUser() {
   renderProjects(); renderBoard();
 }
 
-function queueCloudSync() {
-  if (!supabase || !authUser || suspendCloudSync) return;
-  if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
-  cloudSyncTimer = setTimeout(() => {
-    syncAllToCloud().catch(error => console.error("Erro ao sincronizar com o Supabase:", error));
-  }, 400);
-}
+function queueCloudSync() { /* online-only mode: persistence is handled directly per action */ }
 
-function flattenCardsForCloud() {
+function flattenCardsForCloud(project) {
   const rows = [];
-  state.projects.forEach(project => {
-    Object.entries(project.columns || {}).forEach(([columnKey, cards]) => {
-      (cards || []).forEach((card, index) => {
-        rows.push({
-          id: String(card.id), owner_id: authUser.id, project_id: String(project.id),
-          column_key: columnKey, position: index,
-          title: card.title || "Sem título", description: card.description || "",
-          owner: card.owner || "", due_date: card.date || null,
-          labels: Array.isArray(card.labels) ? card.labels : [],
-          participants: normalizeParticipants(card.participants || []),
-          checklist: Array.isArray(card.checklist) ? card.checklist : [],
-          comments: Array.isArray(card.comments) ? card.comments : [],
-          created_at: card.createdAt || new Date().toISOString()
-        });
+  Object.entries(project.columns || {}).forEach(([columnKey, cards]) => {
+    (cards || []).forEach((card, index) => {
+      rows.push({
+        id: String(card.id),
+        owner_id: authUser.id,
+        project_id: String(project.id),
+        column_key: columnKey,
+        position: index,
+        title: card.title || "Sem título",
+        description: card.description || "",
+        owner: card.owner || "",
+        due_date: card.date || null,
+        labels: Array.isArray(card.labels) ? card.labels : [],
+        participants: normalizeParticipants(card.participants || []),
+        checklist: Array.isArray(card.checklist) ? card.checklist : [],
+        comments: Array.isArray(card.comments) ? card.comments : [],
+        created_at: card.createdAt || new Date().toISOString()
       });
     });
   });
   return rows;
 }
 
-function flattenParticipantLinks() {
-  const rows = [];
-  state.projects.forEach(project => {
-    Object.values(project.columns || {}).flat().forEach(card => {
-      normalizeParticipants(card.participants || []).forEach(participant => {
-        if (!participant.user_id) return;
-        rows.push({
-          card_id: String(card.id), participant_user_id: participant.user_id,
-          owner_id: authUser.id, project_id: String(project.id),
-          participant_name: participantDisplayName(participant),
-          participant_email: participantEmail(participant),
-          participant_avatar_url: participant.avatar_url || null
-        });
-      });
-    });
-  });
-  return rows;
+async function persistProjectToCloud(project) {
+  if (!supabase || !authUser || !project) return;
+  const { error } = await supabase.from("projects").upsert({
+    id: String(project.id),
+    owner_id: authUser.id,
+    name: project.name,
+    created_at: project.createdAt || new Date().toISOString()
+  }, { onConflict: "id" });
+  if (error) throw error;
 }
 
-async function syncAllToCloud() {
-  if (!supabase || !authUser || suspendCloudSync || isSyncingCloud) return;
-  isSyncingCloud = true;
-  try {
-    const projectRows = state.projects.map(project => ({
-      id: String(project.id), owner_id: authUser.id,
-      name: project.name, created_at: project.createdAt || new Date().toISOString()
+async function syncParticipantsForCard(card, projectId) {
+  if (!supabase || !authUser || !card) return;
+  const normalized = normalizeParticipants(card.participants || []);
+  const { data: existingRows, error: existingError } = await supabase
+    .from("card_participants")
+    .select("participant_user_id")
+    .eq("owner_id", authUser.id)
+    .eq("card_id", String(card.id));
+  if (existingError) throw existingError;
+
+  const desiredRows = normalized
+    .filter(participant => participant.user_id)
+    .map(participant => ({
+      card_id: String(card.id),
+      participant_user_id: participant.user_id,
+      owner_id: authUser.id,
+      project_id: String(projectId),
+      participant_name: participantDisplayName(participant),
+      participant_email: participantEmail(participant),
+      participant_avatar_url: participant.avatar_url || null
     }));
 
-    const remoteProjectsRes = await supabase.from("projects").select("id").eq("owner_id", authUser.id);
-    if (remoteProjectsRes.error) throw remoteProjectsRes.error;
-    const remoteProjectIds = (remoteProjectsRes.data || []).map(r => r.id);
-    const localProjectIds  = projectRows.map(r => r.id);
+  if (desiredRows.length) {
+    const { error } = await supabase
+      .from("card_participants")
+      .upsert(desiredRows, { onConflict: "card_id,participant_user_id" });
+    if (error) throw error;
+  }
 
-    if (projectRows.length) {
-      const up = await supabase.from("projects").upsert(projectRows, { onConflict: "id" });
-      if (up.error) throw up.error;
-    }
-    const projectsToDelete = remoteProjectIds.filter(id => !localProjectIds.includes(id));
-    if (projectsToDelete.length) {
-      const d = await supabase.from("projects").delete().eq("owner_id", authUser.id).in("id", projectsToDelete);
-      if (d.error) throw d.error;
-    }
-    if (!localProjectIds.length && remoteProjectIds.length) {
-      const d = await supabase.from("projects").delete().eq("owner_id", authUser.id);
-      if (d.error) throw d.error;
-    }
-
-    const cardRows = flattenCardsForCloud();
-    const remoteCardsRes = await supabase.from("cards").select("id").eq("owner_id", authUser.id);
-    if (remoteCardsRes.error) throw remoteCardsRes.error;
-    const remoteCardIds = (remoteCardsRes.data || []).map(r => r.id);
-    const localCardIds  = cardRows.map(r => r.id);
-
-    if (cardRows.length) {
-      const up = await supabase.from("cards").upsert(cardRows, { onConflict: "id" });
-      if (up.error) throw up.error;
-    }
-    const cardsToDelete = remoteCardIds.filter(id => !localCardIds.includes(id));
-    if (cardsToDelete.length) {
-      const d = await supabase.from("cards").delete().eq("owner_id", authUser.id).in("id", cardsToDelete);
-      if (d.error) throw d.error;
-    }
-    if (!localCardIds.length && remoteCardIds.length) {
-      const d = await supabase.from("cards").delete().eq("owner_id", authUser.id);
-      if (d.error) throw d.error;
-    }
-
-    const participantRows = flattenParticipantLinks();
-    const remoteParticipantsRes = await supabase.from("card_participants").select("card_id,participant_user_id").eq("owner_id", authUser.id);
-    if (remoteParticipantsRes.error) throw remoteParticipantsRes.error;
-    const remoteKeys = (remoteParticipantsRes.data || []).map(r => `${r.card_id}::${r.participant_user_id}`);
-    const localKeys  = participantRows.map(r => `${r.card_id}::${r.participant_user_id}`);
-
-    if (participantRows.length) {
-      const up = await supabase.from("card_participants").upsert(participantRows, { onConflict: "card_id,participant_user_id" });
-      if (up.error) throw up.error;
-    }
-    const participantDeletes = remoteKeys.filter(key => !localKeys.includes(key));
-    for (const key of participantDeletes) {
-      const [card_id, participant_user_id] = key.split("::");
-      const d = await supabase.from("card_participants").delete()
-        .eq("owner_id", authUser.id).eq("card_id", card_id).eq("participant_user_id", participant_user_id);
-      if (d.error) throw d.error;
-    }
-  } finally { isSyncingCloud = false; }
+  const desiredIds = new Set(desiredRows.map(row => row.participant_user_id));
+  const existingIds = (existingRows || []).map(row => row.participant_user_id);
+  const removeIds = existingIds.filter(id => !desiredIds.has(id));
+  if (removeIds.length) {
+    const { error } = await supabase
+      .from("card_participants")
+      .delete()
+      .eq("owner_id", authUser.id)
+      .eq("card_id", String(card.id))
+      .in("participant_user_id", removeIds);
+    if (error) throw error;
+  }
 }
+
+async function persistCardToCloud(card, projectId, columnKey, position) {
+  if (!supabase || !authUser || !card) return;
+  const row = {
+    id: String(card.id),
+    owner_id: authUser.id,
+    project_id: String(projectId),
+    column_key: columnKey,
+    position,
+    title: card.title || "Sem título",
+    description: card.description || "",
+    owner: card.owner || "",
+    due_date: card.date || null,
+    labels: Array.isArray(card.labels) ? card.labels : [],
+    participants: normalizeParticipants(card.participants || []),
+    checklist: Array.isArray(card.checklist) ? card.checklist : [],
+    comments: Array.isArray(card.comments) ? card.comments : [],
+    created_at: card.createdAt || new Date().toISOString()
+  };
+  const { error } = await supabase.from("cards").upsert(row, { onConflict: "id" });
+  if (error) throw error;
+  await syncParticipantsForCard(card, projectId);
+}
+
+async function updateOwnedCardInCloud(cardId, updates) {
+  if (!supabase || !authUser || !cardId) return;
+  const payload = {};
+  if ("title" in updates) payload.title = updates.title || "Sem título";
+  if ("description" in updates) payload.description = updates.description || "";
+  if ("owner" in updates) payload.owner = updates.owner || "";
+  if ("date" in updates) payload.due_date = updates.date || null;
+  if ("labels" in updates) payload.labels = Array.isArray(updates.labels) ? updates.labels : [];
+  if ("participants" in updates) payload.participants = normalizeParticipants(updates.participants || []);
+  if ("checklist" in updates) payload.checklist = Array.isArray(updates.checklist) ? updates.checklist : [];
+  if ("comments" in updates) payload.comments = Array.isArray(updates.comments) ? updates.comments : [];
+  if ("column_key" in updates) payload.column_key = updates.column_key;
+  if ("project_id" in updates) payload.project_id = String(updates.project_id);
+  if ("position" in updates) payload.position = updates.position;
+  const { error } = await supabase.from("cards").update(payload).eq("id", String(cardId)).eq("owner_id", authUser.id);
+  if (error) throw error;
+  if ("participants" in updates && "project_id" in updates) {
+    await syncParticipantsForCard({ id: cardId, participants: updates.participants }, updates.project_id);
+  }
+}
+
+async function persistProjectCardsOrder(project) {
+  if (!project) return;
+  await persistProjectToCloud(project);
+  const rows = flattenCardsForCloud(project);
+  if (!rows.length) return;
+  const lightweightRows = rows.map(({ id, owner_id, project_id, column_key, position }) => ({
+    id, owner_id, project_id, column_key, position
+  }));
+  const { error } = await supabase.from("cards").upsert(lightweightRows, { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function deleteCardFromCloud(cardId) {
+  if (!supabase || !authUser || !cardId) return;
+  const { error: partError } = await supabase
+    .from("card_participants")
+    .delete()
+    .eq("owner_id", authUser.id)
+    .eq("card_id", String(cardId));
+  if (partError) throw partError;
+  const { error } = await supabase.from("cards").delete().eq("owner_id", authUser.id).eq("id", String(cardId));
+  if (error) throw error;
+}
+
+async function deleteProjectFromCloud(projectId) {
+  if (!supabase || !authUser || !projectId) return;
+  const { data: cards, error: cardsError } = await supabase
+    .from("cards")
+    .select("id")
+    .eq("owner_id", authUser.id)
+    .eq("project_id", String(projectId));
+  if (cardsError) throw cardsError;
+  const cardIds = (cards || []).map(card => card.id);
+  if (cardIds.length) {
+    const { error: partError } = await supabase
+      .from("card_participants")
+      .delete()
+      .eq("owner_id", authUser.id)
+      .in("card_id", cardIds);
+    if (partError) throw partError;
+    const { error: cardsDeleteError } = await supabase
+      .from("cards")
+      .delete()
+      .eq("owner_id", authUser.id)
+      .eq("project_id", String(projectId));
+    if (cardsDeleteError) throw cardsDeleteError;
+  }
+  const { error } = await supabase.from("projects").delete().eq("owner_id", authUser.id).eq("id", String(projectId));
+  if (error) throw error;
+}
+
+async function syncAllToCloud() { return; }
 
 // ============================================================
 // WELCOME SPLASH
 // ============================================================
 function maybeShowLoginWelcome(user) {
   if (!user) return;
-  let shouldShow = false;
-  try { shouldShow = hasPendingLoginWelcome(); if (shouldShow) sessionStorage.removeItem(LOGIN_WELCOME_PENDING_KEY); } catch(_) {}
+  const shouldShow = false;
   if (!shouldShow) return;
   const { fullName, avatarUrl } = getUserPresentation(user);
   showWelcomeSplash(fullName, avatarUrl);
@@ -931,7 +983,6 @@ function closeProfileModal() { closeModal(profileModalOverlay); }
 async function handleGoogleLogin() {
   if (!supabase) { authConfigHint.classList.remove("hidden"); return; }
   try {
-    try { sessionStorage.setItem(LOGIN_WELCOME_PENDING_KEY, "1"); } catch(_) {}
     await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href.split("#")[0] }});
   } catch(error) { console.error("Erro no login com Google:", error); alert("Não foi possível iniciar o login com Google."); }
 }
@@ -1040,21 +1091,15 @@ async function handleCheckParticipant() {
 // ============================================================
 // LOCAL STATE
 // ============================================================
-function safeGetItem(key) { try { return localStorage.getItem(key); } catch { return null; } }
-function safeSetItem(key, value) { try { localStorage.setItem(key, value); } catch {} }
+function safeGetItem(_key) { return null; }
+function safeSetItem(_key, _value) {}
 
 function loadState() {
-  try {
-    const saved = safeGetItem(STORAGE_KEY);
-    if (!saved) return { currentProjectId: null, projects: [] };
-    return JSON.parse(saved);
-  } catch { return { currentProjectId: null, projects: [] }; }
+  return { currentProjectId: null, projects: [] };
 }
 
 function saveState() {
   state.currentProjectId = currentProjectId;
-  safeSetItem(STORAGE_KEY, JSON.stringify(state));
-  if (!suspendCloudSync) queueCloudSync();
 }
 
 function uid() { return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`; }
@@ -1303,7 +1348,7 @@ function openProjectModal(mode) {
 }
 function closeProjectModal() { closeModal(projectModalOverlay); }
 
-function handleSaveProject() {
+async function handleSaveProject() {
   if (!requireAuth("salvar projetos")) return;
   const name = projectNameInput.value.trim();
   if (!name) { alert("Digite um nome para o projeto."); projectNameInput.focus(); return; }
@@ -1319,10 +1364,20 @@ function handleSaveProject() {
     if (exists) { alert("Já existe outro projeto com esse nome."); return; }
     currentProject.name = name;
   }
-  saveState(); renderProjects(); renderBoard(); closeProjectModal();
+  try {
+    if (projectModalMode === "create") {
+      await persistProjectToCloud(state.projects[state.projects.length - 1]);
+    } else {
+      await persistProjectToCloud(getCurrentProject());
+    }
+    saveState(); renderProjects(); renderBoard(); closeProjectModal();
+  } catch (error) {
+    console.error("Erro ao salvar projeto:", error);
+    alert("Não foi possível salvar o projeto online.");
+  }
 }
 
-function handleDeleteProject() {
+async function handleDeleteProject() {
   if (!requireAuth("excluir projetos")) return;
   const project = getCurrentProject();
   if (!project) return;
@@ -1330,7 +1385,13 @@ function handleDeleteProject() {
   if (!ok) return;
   state.projects = state.projects.filter(p => p.id !== project.id);
   currentProjectId = state.projects[0]?.id || null;
-  saveState(); renderProjects(); renderBoard();
+  try {
+    await deleteProjectFromCloud(project.id);
+    saveState(); renderProjects(); renderBoard();
+  } catch (error) {
+    console.error("Erro ao excluir projeto:", error);
+    alert("Não foi possível excluir o projeto online.");
+  }
 }
 
 // ============================================================
@@ -1473,10 +1534,19 @@ async function handleSaveCard() {
     project.columns[currentTargetColumn].push(cardData);
   }
 
-  saveState(); renderBoard(); closeCardModal();
+  try {
+    await persistProjectToCloud(project);
+    const targetPosition = project.columns[currentTargetColumn].findIndex(card => card.id === cardData.id);
+    await persistCardToCloud(cardData, project.id, currentTargetColumn, targetPosition);
+    await persistProjectCardsOrder(project);
+    saveState(); renderBoard(); closeCardModal();
+  } catch (error) {
+    console.error("Erro ao salvar card:", error);
+    alert("Não foi possível salvar o card online.");
+  }
 }
 
-function handleDeleteCard() {
+async function handleDeleteCard() {
   if (!requireAuth("excluir cards")) return;
   if (!currentEditingCardId) return;
   // Participants cannot delete
@@ -1488,7 +1558,16 @@ function handleDeleteCard() {
   const found = findCard(currentEditingCardId);
   if (!found) return;
   project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== currentEditingCardId);
-  saveState(); renderBoard(); closeCardModal();
+  try {
+    await persistProjectToCloud(project);
+    const targetPosition = project.columns[currentTargetColumn].findIndex(card => card.id === cardData.id);
+    await persistCardToCloud(cardData, project.id, currentTargetColumn, targetPosition);
+    await persistProjectCardsOrder(project);
+    saveState(); renderBoard(); closeCardModal();
+  } catch (error) {
+    console.error("Erro ao salvar card:", error);
+    alert("Não foi possível salvar o card online.");
+  }
 }
 
 function handleAddChecklistItem() {
@@ -1602,7 +1681,14 @@ function openViewCardModal(cardId) {
           const ok = await toggleSharedChecklistItem(card.id, item.id);
           if (ok) { openViewCardModal(card.id); }
         } else {
-          item.done = !item.done; saveState(); openViewCardModal(card.id); renderBoard();
+          item.done = !item.done;
+          try {
+            await updateOwnedCardInCloud(card.id, { checklist: card.checklist || [] });
+            saveState(); openViewCardModal(card.id); renderBoard();
+          } catch (error) {
+            console.error("Erro ao atualizar checklist:", error);
+            alert("Não foi possível salvar o checklist online.");
+          }
         }
       });
       viewChecklistList.appendChild(row);
@@ -1626,7 +1712,9 @@ function openViewCardModal(cardId) {
       if (!isParticipant) {
         row.querySelector("button").addEventListener("click", () => {
           card.comments = (card.comments || []).filter(c => c.id !== comment.id);
-          saveState(); openViewCardModal(card.id); renderBoard();
+          updateOwnedCardInCloud(card.id, { comments: card.comments || [] })
+            .then(() => { saveState(); openViewCardModal(card.id); renderBoard(); })
+            .catch(error => { console.error("Erro ao remover comentário:", error); alert("Não foi possível atualizar os comentários online."); });
         });
       }
       viewCommentsList.appendChild(row);
@@ -1703,8 +1791,14 @@ function injectMoveSection(cardId, currentCol, isParticipant) {
       const card = found.card;
       project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== cardId);
       project.columns[newCol].push(card);
-      saveState(); renderBoard();
-      closeViewCardModal();
+      try {
+        await persistProjectCardsOrder(project);
+        saveState(); renderBoard();
+        closeViewCardModal();
+      } catch (error) {
+        console.error("Erro ao mover card:", error);
+        alert("Não foi possível mover o card online.");
+      }
     }
   });
 }
@@ -1735,7 +1829,13 @@ async function handleViewAddComment() {
   if (!Array.isArray(found.card.comments)) found.card.comments = [];
   found.card.comments.push({ id: uid(), text, author: authUser ? getUserPresentation(authUser).fullName : "", createdAt: new Date().toISOString() });
   viewNewCommentInput.value = "";
-  saveState(); openViewCardModal(cardId); renderBoard();
+  try {
+    await updateOwnedCardInCloud(cardId, { comments: found.card.comments || [] });
+    saveState(); openViewCardModal(cardId); renderBoard();
+  } catch (error) {
+    console.error("Erro ao adicionar comentário:", error);
+    alert("Não foi possível salvar o comentário online.");
+  }
 }
 
 // Store current view card id for shared comments
@@ -1762,7 +1862,13 @@ viewAddCommentBtn.addEventListener("click", async () => {
   if (!Array.isArray(found.card.comments)) found.card.comments = [];
   found.card.comments.push({ id: uid(), text, author: authUser ? getUserPresentation(authUser).fullName : "", createdAt: new Date().toISOString() });
   viewNewCommentInput.value = "";
-  saveState(); openViewCardModal(cardId); renderBoard();
+  try {
+    await updateOwnedCardInCloud(cardId, { comments: found.card.comments || [] });
+    saveState(); openViewCardModal(cardId); renderBoard();
+  } catch (error) {
+    console.error("Erro ao adicionar comentário:", error);
+    alert("Não foi possível salvar o comentário online.");
+  }
 });
 
 viewNewCommentInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); viewAddCommentBtn.click(); }});
@@ -1783,7 +1889,7 @@ function findCard(cardId) {
 // ============================================================
 // DRAG AND DROP (owned cards only)
 // ============================================================
-function moveCardToColumnAtPosition(cardId, targetColumnId, targetContainer) {
+async function moveCardToColumnAtPosition(cardId, targetColumnId, targetContainer) {
   const project = getCurrentProject();
   if (!project) return;
   let draggedCard = null;
@@ -1796,7 +1902,13 @@ function moveCardToColumnAtPosition(cardId, targetColumnId, targetContainer) {
   const insertIndex = orderedIds.indexOf(cardId);
   if (insertIndex === -1) project.columns[targetColumnId].push(draggedCard);
   else project.columns[targetColumnId].splice(insertIndex, 0, draggedCard);
-  saveState(); renderBoard();
+  try {
+    await persistProjectCardsOrder(project);
+    saveState(); renderBoard();
+  } catch (error) {
+    console.error("Erro ao reordenar card:", error);
+    alert("Não foi possível salvar a nova ordem online.");
+  }
 }
 
 function getDragAfterElement(container, mouseY) {
@@ -1854,8 +1966,8 @@ function closeModal(overlay) {
 // ============================================================
 // THEME & SIDEBAR
 // ============================================================
-function setTheme(theme) { document.documentElement.setAttribute("data-theme", theme); safeSetItem(THEME_KEY, theme); updateThemeButtons(theme); }
-function applySavedTheme() { const t = safeGetItem(THEME_KEY) || "dark"; document.documentElement.setAttribute("data-theme", t); updateThemeButtons(t); }
+function setTheme(theme) { document.documentElement.setAttribute("data-theme", theme); updateThemeButtons(theme); }
+function applySavedTheme() { const t = document.documentElement.getAttribute("data-theme") || "dark"; document.documentElement.setAttribute("data-theme", t); updateThemeButtons(t); }
 function updateThemeButtons(theme) {
   lightBtn.classList.toggle("active", theme === "light");
   darkBtn.classList.toggle("active", theme === "dark");
@@ -1873,18 +1985,18 @@ function toggleSidebar() {
     if (appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar(); else openMobileSidebar(); return;
   }
   const collapsed = appShell.classList.toggle("sidebar-collapsed");
-  safeSetItem(SIDEBAR_KEY, collapsed ? "1" : "0"); updateSidebarToggleButton(collapsed);
+  updateSidebarToggleButton(collapsed);
 }
 
 function applySavedSidebar() {
   if (isMobileViewport()) { appShell.classList.remove("sidebar-collapsed", "mobile-sidebar-open"); updateSidebarToggleButton(true); return; }
-  const collapsed = safeGetItem(SIDEBAR_KEY) === "1";
+  const collapsed = false;
   appShell.classList.remove("mobile-sidebar-open"); appShell.classList.toggle("sidebar-collapsed", collapsed); updateSidebarToggleButton(collapsed);
 }
 
 function handleResponsiveLayout() {
   if (isMobileViewport()) { appShell.classList.remove("sidebar-collapsed"); if (!appShell.classList.contains("mobile-sidebar-open")) updateSidebarToggleButton(true); }
-  else { appShell.classList.remove("mobile-sidebar-open"); const collapsed = safeGetItem(SIDEBAR_KEY) === "1"; appShell.classList.toggle("sidebar-collapsed", collapsed); updateSidebarToggleButton(collapsed); }
+  else { appShell.classList.remove("mobile-sidebar-open"); const collapsed = false; appShell.classList.toggle("sidebar-collapsed", collapsed); updateSidebarToggleButton(collapsed); }
 }
 
 function updateSidebarToggleButton(collapsed) {
@@ -2135,7 +2247,7 @@ function kqGetOrCreateDropdown() {
 // ── Theme FAB ────────────────────────────────────────────────────
 if (themeToggleBtn) {
   // Set initial icon
-  const savedTheme = safeGetItem(THEME_KEY) || "dark";
+  const savedTheme = document.documentElement.getAttribute("data-theme") || "dark";
   const fabIcon = document.getElementById("themeToggleIcon");
   if (fabIcon) fabIcon.textContent = savedTheme === "dark" ? "☀️" : "🌙";
 
