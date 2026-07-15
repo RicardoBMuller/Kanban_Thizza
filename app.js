@@ -7,7 +7,7 @@ const SUPABASE_URL = String(KANBAN_CONFIG.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(
   KANBAN_CONFIG.SUPABASE_PUBLISHABLE_KEY || KANBAN_CONFIG.SUPABASE_ANON_KEY || ""
 ).trim();
-const APP_VERSION = "2026.07.15-rebuild-1";
+const APP_VERSION = "2026.07.15-status-lock-3";
 
 // ============================================================
 // CONSTANTES
@@ -44,6 +44,8 @@ let cardModalDirty       = false;
 let cardSaveInProgress   = false;
 let lastHandledUserId    = null;
 let notificationSeenIds  = new Set();
+let persistentNotifications = [];
+let notificationRealtimeChannel = null;
 let chatRuntimeReady     = false;
 
 // Shared cards — cards where the logged user is a participant (not owner)
@@ -117,6 +119,7 @@ const cardDescInput      = document.getElementById("cardDescInput");
 const cardOwnerInput     = document.getElementById("cardOwnerInput");
 const cardDateInput      = document.getElementById("cardDateInput");
 const cardLabelsInput    = document.getElementById("cardLabelsInput");
+const cardCreatedInfo          = document.getElementById("cardCreatedInfo");
 const cardParticipantsInput    = document.getElementById("cardParticipantsInput");
 const cardCheckParticipantBtn  = document.getElementById("cardCheckParticipantBtn");
 const participantSearchResultsEl = document.getElementById("participantSearchResults");
@@ -133,6 +136,7 @@ const viewCardModalOverlay   = document.getElementById("viewCardModalOverlay");
 const viewCardTitle          = document.getElementById("viewCardTitle");
 const viewCardOwner          = document.getElementById("viewCardOwner");
 const viewCardDate           = document.getElementById("viewCardDate");
+const viewCardCreatedAt      = document.getElementById("viewCardCreatedAt");
 const viewCardColumn         = document.getElementById("viewCardColumn");
 const viewCardDescription    = document.getElementById("viewCardDescription");
 const viewCardLabels         = document.getElementById("viewCardLabels");
@@ -148,6 +152,16 @@ const viewCommentsList       = document.getElementById("viewCommentsList");
 const closeViewCardModalBtn  = document.getElementById("closeViewCardModalBtn");
 const closeViewCardFooterBtn = document.getElementById("closeViewCardFooterBtn");
 const viewEditCardBtn        = document.getElementById("viewEditCardBtn");
+
+const statusConfirmOverlay   = document.getElementById("statusConfirmOverlay");
+const statusConfirmIcon      = document.getElementById("statusConfirmIcon");
+const statusConfirmTitle     = document.getElementById("statusConfirmTitle");
+const statusConfirmMessage   = document.getElementById("statusConfirmMessage");
+const statusConfirmWarning   = document.getElementById("statusConfirmWarning");
+const statusConfirmCloseBtn  = document.getElementById("statusConfirmCloseBtn");
+const statusConfirmCancelBtn = document.getElementById("statusConfirmCancelBtn");
+const statusConfirmAcceptBtn = document.getElementById("statusConfirmAcceptBtn");
+let statusConfirmResolver    = null;
 
 const addCardButtons = document.querySelectorAll(".add-card-btn");
 const columnEls      = document.querySelectorAll(".column");
@@ -172,9 +186,17 @@ function updateCreationAccess() {
   newProjectBtn.disabled = !canCreateProjects;
   newProjectBtn.title = canCreateProjects ? "Criar projeto" : "Faça login com Google para criar projetos";
   addCardButtons.forEach(button => {
-    const canCreateCards = Boolean(authUser && hasProject);
+    const columnId = button.closest(".column")?.dataset.col;
+    const isDoneColumn = columnId === "done";
+    const canCreateCards = Boolean(authUser && hasProject && !isDoneColumn);
     button.disabled = !canCreateCards;
-    button.title = canCreateCards ? "Criar card" : isViewingSharedProject ? "Não é possível criar cards em projetos compartilhados" : "Faça login com Google e selecione/crie um projeto";
+    if (isDoneColumn) {
+      button.textContent = "🔒 Travada";
+      button.title = "Crie o card em Pendente ou Em Progresso e conclua-o após a confirmação.";
+    } else {
+      button.textContent = "+ Nova";
+      button.title = canCreateCards ? "Criar card" : isViewingSharedProject ? "Não é possível criar cards em projetos compartilhados" : "Faça login com Google e selecione/crie um projeto";
+    }
   });
 }
 
@@ -214,6 +236,10 @@ function bindEvents() {
   on(deleteCardBtn, "click", handleDeleteCard);
   on(closeViewCardModalBtn, "click", closeViewCardModal);
   on(closeViewCardFooterBtn, "click", closeViewCardModal);
+  on(statusConfirmCloseBtn, "click", () => resolveStatusConfirmation(false));
+  on(statusConfirmCancelBtn, "click", () => resolveStatusConfirmation(false));
+  on(statusConfirmAcceptBtn, "click", () => resolveStatusConfirmation(true));
+  on(statusConfirmOverlay, "click", e => { if (e.target === statusConfirmOverlay) resolveStatusConfirmation(false); });
   on(addChecklistItemBtn, "click", handleAddChecklistItem);
   on(addCommentBtn, "click", handleAddComment);
   on(newChecklistItemInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleAddChecklistItem(); }});
@@ -257,6 +283,7 @@ function bindEvents() {
   addCardButtons.forEach(button => {
     button.addEventListener("click", () => {
       const col = button.closest(".column").dataset.col;
+      if (col === "done") return;
       openCardModal("create", col);
     });
   });
@@ -289,6 +316,12 @@ function bindEvents() {
 
   document.addEventListener("keydown", e => {
     if (e.key !== "Escape") return;
+
+    if (statusConfirmOverlay && !statusConfirmOverlay.classList.contains("hidden")) {
+      e.preventDefault();
+      resolveStatusConfirmation(false);
+      return;
+    }
 
     // O modal do card só fecha pelos botões. Isso evita que o navegador,
     // autocomplete ou seletores nativos descartem o preenchimento por engano.
@@ -391,6 +424,8 @@ async function handleSessionUser(sessionUser, { showWelcome = false } = {}) {
     profileRecord = null;
     lastHandledUserId = null;
     notificationSeenIds = new Set();
+    persistentNotifications = [];
+    teardownNotificationRealtime();
     clearDataForSignedOutUser();
     authUser = null;
     updateAuthUI(null);
@@ -399,7 +434,8 @@ async function handleSessionUser(sessionUser, { showWelcome = false } = {}) {
   lastHandledUserId = sessionUser.id;
   await refreshAuthUser(sessionUser);
   await ensureProfileRecord();
-  await Promise.all([loadCloudData(), loadSharedCards(), loadNotificationReads()]);
+  await Promise.all([loadCloudData(), loadSharedCards(), loadNotificationReads(), loadPersistentNotifications()]);
+  setupNotificationRealtime();
   updateAuthUI(authUser);
   kqRenderNotifications();
   closeAuthModal();
@@ -540,6 +576,8 @@ async function handleLogout() {
       authUser = null; profileRecord = null;
       sharedCardsState = []; isViewingSharedProject = false;
       notificationSeenIds = new Set();
+      persistentNotifications = [];
+      teardownNotificationRealtime();
       closeChatWindow();
       showGoodbyeSplash(presentation.fullName, presentation.avatarUrl);
       setTimeout(() => window.location.reload(), 2800);
@@ -588,10 +626,17 @@ async function loadCloudData() {
       id: row.id, title: row.title || "Sem título", description: row.description || "",
       owner: row.owner || "", date: row.due_date || "",
       labels: Array.isArray(row.labels) ? row.labels : [],
-      participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : []),
-      checklist: Array.isArray(row.checklist) ? row.checklist : [],
-      comments: Array.isArray(row.comments) ? row.comments : [],
-      createdAt: row.created_at || new Date().toISOString()
+      participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : [], row.created_at),
+      checklist: normalizeChecklistItems(Array.isArray(row.checklist) ? row.checklist : [], row.created_at),
+      comments: normalizeComments(Array.isArray(row.comments) ? row.comments : [], row.created_at),
+      createdAt: row.created_at || new Date().toISOString(),
+      updatedAt: row.updated_at || row.created_at || new Date().toISOString(),
+      completedAt: row.completed_at || null,
+      completedBy: row.completed_by || null,
+      reopenedAt: row.reopened_at || null,
+      reopenedBy: row.reopened_by || null,
+      reopenedCount: Number(row.reopened_count || 0),
+      isReopened: Boolean(row.is_reopened)
     };
     if (!targetProject.columns[columnKey]) targetProject.columns[columnKey] = [];
     targetProject.columns[columnKey].push(card);
@@ -647,10 +692,17 @@ async function loadSharedCards() {
       id: row.id, title: row.title || "Sem título", description: row.description || "",
       owner: row.owner || "", date: row.due_date || "",
       labels: Array.isArray(row.labels) ? row.labels : [],
-      participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : []),
-      checklist: Array.isArray(row.checklist) ? row.checklist : [],
-      comments: Array.isArray(row.comments) ? row.comments : [],
-      createdAt: row.created_at || new Date().toISOString()
+      participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : [], row.created_at),
+      checklist: normalizeChecklistItems(Array.isArray(row.checklist) ? row.checklist : [], row.created_at),
+      comments: normalizeComments(Array.isArray(row.comments) ? row.comments : [], row.created_at),
+      createdAt: row.created_at || new Date().toISOString(),
+      updatedAt: row.updated_at || row.created_at || new Date().toISOString(),
+      completedAt: row.completed_at || null,
+      completedBy: row.completed_by || null,
+      reopenedAt: row.reopened_at || null,
+      reopenedBy: row.reopened_by || null,
+      reopenedCount: Number(row.reopened_count || 0),
+      isReopened: Boolean(row.is_reopened)
     },
     columnId: row.column_key || "todo",
     projectId: row.project_id,
@@ -681,7 +733,12 @@ function findSharedCard(cardId) {
  */
 async function saveSharedCardUpdate(cardId, updates) {
   if (!supabase || !authUser) return false;
-  const allowedFields = ["title", "description", "checklist", "comments", "column_key"];
+  const allowedFields = ["title", "description", "checklist", "comments"];
+  const sharedCard = findSharedCard(cardId);
+  if (sharedCard?.columnId === "done") {
+    alert("Este card está concluído e travado. Reabra-o antes de fazer alterações.");
+    return false;
+  }
   const payload = {};
   for (const key of allowedFields) {
     if (key in updates) payload[key] = updates[key];
@@ -692,12 +749,7 @@ async function saveSharedCardUpdate(cardId, updates) {
 }
 
 async function moveSharedCardToColumn(cardId, newColumnKey) {
-  const ok = await saveSharedCardUpdate(cardId, { column_key: newColumnKey });
-  if (ok) {
-    const sc = findSharedCard(cardId);
-    if (sc) sc.columnId = newColumnKey;
-    renderBoard();
-  }
+  return transitionCardStatus(cardId, newColumnKey);
 }
 
 async function toggleSharedChecklistItem(cardId, itemId) {
@@ -786,10 +838,16 @@ function flattenCardsForCloud(project) {
         owner: card.owner || "",
         due_date: card.date || null,
         labels: Array.isArray(card.labels) ? card.labels : [],
-        participants: normalizeParticipants(card.participants || []),
-        checklist: Array.isArray(card.checklist) ? card.checklist : [],
-        comments: Array.isArray(card.comments) ? card.comments : [],
-        created_at: card.createdAt || new Date().toISOString()
+        participants: normalizeParticipants(card.participants || [], card.createdAt),
+        checklist: normalizeChecklistItems(card.checklist || [], card.createdAt),
+        comments: normalizeComments(Array.isArray(card.comments) ? card.comments : [], card.createdAt),
+        created_at: card.createdAt || new Date().toISOString(),
+        completed_at: card.completedAt || null,
+        completed_by: card.completedBy || null,
+        reopened_at: card.reopenedAt || null,
+        reopened_by: card.reopenedBy || null,
+        reopened_count: Number(card.reopenedCount || 0),
+        is_reopened: Boolean(card.isReopened)
       });
     });
   });
@@ -863,10 +921,16 @@ async function persistCardToCloud(card, projectId, columnKey, position) {
     owner: card.owner || "",
     due_date: card.date || null,
     labels: Array.isArray(card.labels) ? card.labels : [],
-    participants: normalizeParticipants(card.participants || []),
-    checklist: Array.isArray(card.checklist) ? card.checklist : [],
-    comments: Array.isArray(card.comments) ? card.comments : [],
-    created_at: card.createdAt || new Date().toISOString()
+    participants: normalizeParticipants(card.participants || [], card.createdAt),
+    checklist: normalizeChecklistItems(card.checklist || [], card.createdAt),
+    comments: normalizeComments(Array.isArray(card.comments) ? card.comments : [], card.createdAt),
+    created_at: card.createdAt || new Date().toISOString(),
+    completed_at: card.completedAt || null,
+    completed_by: card.completedBy || null,
+    reopened_at: card.reopenedAt || null,
+    reopened_by: card.reopenedBy || null,
+    reopened_count: Number(card.reopenedCount || 0),
+    is_reopened: Boolean(card.isReopened)
   };
   const { error } = await supabase.from("cards").upsert(row, { onConflict: "id" });
   if (error) throw error;
@@ -875,18 +939,22 @@ async function persistCardToCloud(card, projectId, columnKey, position) {
 
 async function updateOwnedCardInCloud(cardId, updates) {
   if (!supabase || !authUser || !cardId) return;
+  const localFound = findCard(String(cardId));
   const payload = {};
   if ("title" in updates) payload.title = updates.title || "Sem título";
   if ("description" in updates) payload.description = updates.description || "";
   if ("owner" in updates) payload.owner = updates.owner || "";
   if ("date" in updates) payload.due_date = updates.date || null;
   if ("labels" in updates) payload.labels = Array.isArray(updates.labels) ? updates.labels : [];
-  if ("participants" in updates) payload.participants = normalizeParticipants(updates.participants || []);
-  if ("checklist" in updates) payload.checklist = Array.isArray(updates.checklist) ? updates.checklist : [];
-  if ("comments" in updates) payload.comments = Array.isArray(updates.comments) ? updates.comments : [];
+  if ("participants" in updates) payload.participants = normalizeParticipants(updates.participants || [], localFound?.card?.createdAt);
+  if ("checklist" in updates) payload.checklist = normalizeChecklistItems(updates.checklist || [], localFound?.card?.createdAt);
+  if ("comments" in updates) payload.comments = normalizeComments(updates.comments || [], localFound?.card?.createdAt);
   if ("column_key" in updates) payload.column_key = updates.column_key;
   if ("project_id" in updates) payload.project_id = String(updates.project_id);
   if ("position" in updates) payload.position = updates.position;
+  if (localFound?.columnId === "done") {
+    throw new Error("Este card está concluído e travado. Reabra-o antes de alterar qualquer informação.");
+  }
   const { error } = await supabase.from("cards").update(payload).eq("id", String(cardId)).eq("owner_id", authUser.id);
   if (error) throw error;
   if ("participants" in updates && "project_id" in updates) {
@@ -897,11 +965,11 @@ async function updateOwnedCardInCloud(cardId, updates) {
 async function persistProjectCardsOrder(project) {
   if (!project) return;
   await persistProjectToCloud(project);
-  const rows = flattenCardsForCloud(project);
+  const rows = flattenCardsForCloud(project).filter(row => row.column_key !== "done");
   if (!rows.length) return;
 
-  // Envia as linhas completas. Um UPSERT parcial pode falhar nas colunas NOT NULL
-  // antes mesmo de o PostgreSQL resolver o conflito pelo ID.
+  // Cards concluídos são imutáveis e não entram em atualizações de ordenação.
+  // As demais linhas continuam completas para evitar falha em colunas NOT NULL.
   const { error } = await supabase.from("cards").upsert(rows, { onConflict: "id" });
   if (error) throw error;
 }
@@ -1050,17 +1118,37 @@ async function handleGoogleLogin() {
 function participantDisplayName(p) { if (!p) return ""; return p.full_name || p.name || p.email || String(p); }
 function participantEmail(p)        { if (!p || typeof p === "string") return ""; return p.email || ""; }
 
-function normalizeParticipant(p) {
+function normalizeParticipant(p, fallbackCreatedAt = null) {
   if (!p) return null;
-  if (typeof p === "string") return { user_id: null, full_name: p, email: "", avatar_url: "" };
+  if (typeof p === "string") return { user_id: null, full_name: p, email: "", avatar_url: "", added_at: fallbackCreatedAt || new Date().toISOString() };
   return {
     user_id: p.user_id || p.id || null,
     full_name: p.full_name || p.name || p.email || "Participante",
-    email: p.email || "", avatar_url: p.avatar_url || p.picture || ""
+    email: p.email || "",
+    avatar_url: p.avatar_url || p.picture || "",
+    added_at: p.added_at || p.addedAt || p.created_at || p.createdAt || fallbackCreatedAt || new Date().toISOString()
   };
 }
-function normalizeParticipants(participants) {
-  return (Array.isArray(participants) ? participants : []).map(normalizeParticipant).filter(Boolean);
+function normalizeParticipants(participants, fallbackCreatedAt = null) {
+  return (Array.isArray(participants) ? participants : []).map(p => normalizeParticipant(p, fallbackCreatedAt)).filter(Boolean);
+}
+function normalizeChecklistItems(items, fallbackCreatedAt = null) {
+  return (Array.isArray(items) ? items : []).map(item => ({
+    ...item,
+    id: item?.id || uid(),
+    text: item?.text || "Item",
+    done: Boolean(item?.done),
+    createdAt: item?.createdAt || item?.created_at || fallbackCreatedAt || new Date().toISOString()
+  }));
+}
+function normalizeComments(items, fallbackCreatedAt = null) {
+  return (Array.isArray(items) ? items : []).map(item => ({
+    ...item,
+    id: item?.id || uid(),
+    text: item?.text || "",
+    author: item?.author || "",
+    createdAt: item?.createdAt || item?.created_at || fallbackCreatedAt || new Date().toISOString()
+  }));
 }
 
 function renderSelectedParticipants() {
@@ -1078,7 +1166,7 @@ function renderSelectedParticipants() {
         ${p.avatar_url ? `<img class="selected-participant-avatar" src="${escapeHtml(p.avatar_url)}" alt="${escapeHtml(participantDisplayName(p))}">` : `<div class="selected-participant-avatar">${escapeHtml(initials)}</div>`}
         <div class="selected-participant-copy">
           <strong>${escapeHtml(participantDisplayName(p))}</strong>
-          <span>${escapeHtml(participantEmail(p) || "Participante adicionado")}</span>
+          <span>${escapeHtml(participantEmail(p) || "Participante adicionado")} · Incluído em ${escapeHtml(formatDateTime(p.added_at))}</span>
         </div>
       </div>
       <button class="btn btn-soft btn-sm" type="button">Remover</button>`;
@@ -1110,7 +1198,7 @@ function renderParticipantSearchResults() {
 }
 
 function addParticipantToTemp(p) {
-  const normalized = normalizeParticipant(p);
+  const normalized = normalizeParticipant({ ...p, added_at: p?.added_at || new Date().toISOString() });
   const key = normalized.user_id || normalized.email || participantDisplayName(normalized);
   const exists = tempParticipants.some(item => (item.user_id || item.email || participantDisplayName(item)) === key);
   if (exists) return;
@@ -1187,10 +1275,16 @@ function migrateOldData() {
         id: card.id || uid(), title: card.title || "Sem título", description: card.description || "",
         owner: card.owner || "", date: card.date || "",
         labels: Array.isArray(card.labels) ? card.labels : [],
-        participants: normalizeParticipants(Array.isArray(card.participants) ? card.participants : []),
-        checklist: Array.isArray(card.checklist) ? card.checklist : [],
-        comments: Array.isArray(card.comments) ? card.comments : [],
-        createdAt: card.createdAt || new Date().toISOString()
+        participants: normalizeParticipants(Array.isArray(card.participants) ? card.participants : [], card.createdAt),
+        checklist: normalizeChecklistItems(Array.isArray(card.checklist) ? card.checklist : [], card.createdAt),
+        comments: normalizeComments(Array.isArray(card.comments) ? card.comments : [], card.createdAt),
+        createdAt: card.createdAt || new Date().toISOString(),
+        completedAt: card.completedAt || null,
+        completedBy: card.completedBy || null,
+        reopenedAt: card.reopenedAt || null,
+        reopenedBy: card.reopenedBy || null,
+        reopenedCount: Number(card.reopenedCount || 0),
+        isReopened: Boolean(card.isReopened)
       }));
     });
   });
@@ -1220,7 +1314,10 @@ function renderProjects() {
   state.projects.forEach(project => {
     const li = document.createElement("li");
     li.innerHTML = `
-      <span class="project-item-name">${escapeHtml(project.name)}</span>
+      <span class="project-item-copy">
+        <span class="project-item-name">${escapeHtml(project.name)}</span>
+        <small class="project-created-date">Incluído em ${escapeHtml(formatDateTime(project.createdAt))}</small>
+      </span>
       <button class="project-edit-btn" type="button" aria-label="Editar projeto" title="Editar projeto">⋯</button>`;
     if (project.id === currentProjectId && !isViewingSharedProject) li.classList.add("active");
     li.addEventListener("click", () => {
@@ -1336,14 +1433,19 @@ function renderColumn(columnId, cards, isShared = false) {
 
   filtered.forEach(card => {
     const cardEl = document.createElement("article");
-    cardEl.className = "card";
-    cardEl.draggable = !isShared; // participants can't drag-drop (they use the dropdown in view)
+    const isCompleted = columnId === "done";
+    const isReopened = Boolean(card.isReopened) && !isCompleted;
+    cardEl.className = `card${isCompleted ? " is-completed" : ""}${isReopened ? " is-reopened" : ""}`;
+    cardEl.draggable = !isShared && !isCompleted; // concluídos ficam travados
     cardEl.dataset.cardId = card.id;
 
     const labelsHtml = (card.labels || []).filter(Boolean).map(l => `<span class="label">${escapeHtml(l)}</span>`).join("");
     const meta = [];
     if (card.owner) meta.push(`<span class="meta-chip">👤 ${escapeHtml(card.owner)}</span>`);
     if (card.date)  meta.push(`<span class="meta-chip">Prazo: ${formatDate(card.date)}</span>`);
+    meta.push(`<span class="meta-chip">Incluído: ${escapeHtml(formatDateTime(card.createdAt))}</span>`);
+    if (isCompleted && card.completedAt) meta.push(`<span class="meta-chip completed-meta">Concluído: ${escapeHtml(formatDateTime(card.completedAt))}</span>`);
+    if (isReopened && card.reopenedAt) meta.push(`<span class="meta-chip reopened-meta">Reaberto: ${escapeHtml(formatDateTime(card.reopenedAt))}</span>`);
 
     const checklist  = card.checklist || [];
     const doneItems  = checklist.filter(i => i.done).length;
@@ -1362,10 +1464,14 @@ function renderColumn(columnId, cards, isShared = false) {
     const participantsHtml = participants.length
       ? `<div class="card-participants">${participants.slice(0, 3).map(p => `<span class="participant-chip">${escapeHtml(participantDisplayName(p))}</span>`).join("")}${participants.length > 3 ? `<span class="participant-chip participant-chip-more">+${participants.length - 3}</span>` : ""}</div>` : "";
 
-    const sharedBadge = isShared ? `<span class="card-shared-badge">🤝 Compartilhado</span><br>` : "";
+    const sharedBadge = isShared ? `<span class="card-shared-badge">🤝 Compartilhado</span>` : "";
+    const completedBadge = isCompleted ? `<span class="card-status-badge completed">🔒 Concluído e travado</span>` : "";
+    const reopenedBadge = isReopened ? `<span class="card-status-badge reopened">↩ Reaberto</span>` : "";
+    const statusBadges = [sharedBadge, completedBadge, reopenedBadge].filter(Boolean).join("");
 
     cardEl.innerHTML = `
-      ${sharedBadge}
+      ${isReopened ? `<span class="reopened-watermark" aria-hidden="true">REABERTO</span>` : ""}
+      ${statusBadges ? `<div class="card-status-row">${statusBadges}</div>` : ""}
       <h4 class="card-title">${escapeHtml(card.title || "Sem título")}</h4>
       <p class="card-desc">${escapeHtml(truncate(card.description || "Sem descrição.", 140))}</p>
       ${labelsHtml ? `<div class="card-labels">${labelsHtml}</div>` : ""}
@@ -1375,7 +1481,7 @@ function renderColumn(columnId, cards, isShared = false) {
       <div class="card-comments-row">
         <span class="card-comments-info">💬 ${commentsCount} comentário(s)</span>
         <div class="card-actions">
-          <button class="btn btn-soft btn-sm edit-card-btn" type="button">${isShared ? "Editar (participante)" : "Editar"}</button>
+          <button class="btn btn-soft btn-sm edit-card-btn" type="button">${isCompleted ? "Visualizar" : (isShared ? "Editar (participante)" : "Editar")}</button>
         </div>
       </div>`;
 
@@ -1386,7 +1492,8 @@ function renderColumn(columnId, cards, isShared = false) {
 
     cardEl.querySelector(".edit-card-btn").addEventListener("click", e => {
       e.stopPropagation();
-      openCardModal("edit", columnId, card.id);
+      if (isCompleted) openViewCardModal(card.id);
+      else openCardModal("edit", columnId, card.id);
     });
 
     if (!isShared) {
@@ -1494,6 +1601,12 @@ function openCardModal(mode, columnId, cardId = null) {
 
   // Check if it's a shared card
   const shared = cardId ? findSharedCard(cardId) : null;
+  const existingFound = cardId ? (shared ? { card: shared.card, columnId: shared.columnId } : findCard(cardId)) : null;
+  if (mode === "edit" && existingFound?.columnId === "done") {
+    alert("Este card está concluído e travado. Use a opção Reabrir para voltar a editá-lo.");
+    openViewCardModal(cardId);
+    return;
+  }
 
   if (!shared && !getCurrentProject()) {
     if (!isViewingSharedProject) { alert("Crie um projeto antes de adicionar cards."); return; }
@@ -1513,6 +1626,7 @@ function openCardModal(mode, columnId, cardId = null) {
     cardOwnerInput.value  = authUser ? getUserPresentation(authUser).fullName : "";
     cardDateInput.value   = ""; cardLabelsInput.value = "";
     if (cardParticipantsInput) cardParticipantsInput.value = "";
+    if (cardCreatedInfo) cardCreatedInfo.classList.add("hidden");
     // Show all fields for owner
     setOwnerOnlyFields(true);
   } else {
@@ -1522,6 +1636,10 @@ function openCardModal(mode, columnId, cardId = null) {
     currentEditingCardId = cardId;
     currentTargetColumn  = found.columnId;
     cardModalTitle.textContent = shared ? "Editar Card (Participante)" : "Editar Card";
+    if (cardCreatedInfo) {
+      cardCreatedInfo.textContent = `📅 Data de inclusão do card: ${formatDateTime(found.card.createdAt)}`;
+      cardCreatedInfo.classList.remove("hidden");
+    }
 
     cardTitleInput.value = found.card.title || "";
     cardDescInput.value  = found.card.description || "";
@@ -1633,10 +1751,16 @@ async function handleSaveCard() {
     owner: cardOwnerInput.value.trim() || (authUser ? getUserPresentation(authUser).fullName : ""),
     date: cardDateInput.value,
     labels: cardLabelsInput.value.split(",").map(l => l.trim()).filter(Boolean),
-    participants: clone(tempParticipants),
-    checklist: clone(tempChecklist),
-    comments: clone(tempComments),
-    createdAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.createdAt || new Date().toISOString()) : new Date().toISOString()
+    participants: normalizeParticipants(clone(tempParticipants)),
+    checklist: normalizeChecklistItems(clone(tempChecklist)),
+    comments: normalizeComments(clone(tempComments)),
+    createdAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.createdAt || new Date().toISOString()) : new Date().toISOString(),
+    completedAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.completedAt || null) : null,
+    completedBy: currentEditingCardId ? (findCard(currentEditingCardId)?.card.completedBy || null) : null,
+    reopenedAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.reopenedAt || null) : null,
+    reopenedBy: currentEditingCardId ? (findCard(currentEditingCardId)?.card.reopenedBy || null) : null,
+    reopenedCount: currentEditingCardId ? Number(findCard(currentEditingCardId)?.card.reopenedCount || 0) : 0,
+    isReopened: currentEditingCardId ? Boolean(findCard(currentEditingCardId)?.card.isReopened) : false
   };
 
   const columnsSnapshot = clone(project.columns);
@@ -1689,6 +1813,10 @@ async function handleDeleteCard() {
   if (!project) return;
   const found = findCard(currentEditingCardId);
   if (!found) return;
+  if (found.columnId === "done") {
+    alert("Cards concluídos ficam travados. Reabra o card antes de excluí-lo.");
+    return;
+  }
 
   const columnsSnapshot = clone(project.columns);
   const deletingId = currentEditingCardId;
@@ -1721,7 +1849,7 @@ Motivo: ${formatCloudError(error)}`);
 function handleAddChecklistItem() {
   const text = newChecklistItemInput.value.trim();
   if (!text) return;
-  tempChecklist.push({ id: uid(), text, done: false });
+  tempChecklist.push({ id: uid(), text, done: false, createdAt: new Date().toISOString() });
   cardModalDirty = true;
   newChecklistItemInput.value = "";
   renderEditChecklist();
@@ -1745,7 +1873,7 @@ function renderEditChecklist() {
     row.innerHTML = `
       <div class="edit-item-left">
         <input type="checkbox" ${item.done ? "checked" : ""} />
-        <span>${escapeHtml(item.text)}</span>
+        <span class="edit-item-copy"><strong>${escapeHtml(item.text)}</strong><small>Incluído em ${escapeHtml(formatDateTime(item.createdAt))}</small></span>
       </div>
       <button class="btn btn-soft btn-sm" type="button">Remover</button>`;
     row.querySelector("input").addEventListener("change", e => { item.done = e.target.checked; cardModalDirty = true; });
@@ -1762,7 +1890,7 @@ function renderEditComments() {
     row.className = "edit-item";
     row.innerHTML = `
       <div class="edit-item-left">
-        <span>${escapeHtml(comment.text)}${comment.author ? ` — ${escapeHtml(comment.author)}` : ""}</span>
+        <span class="edit-item-copy"><strong>${escapeHtml(comment.text)}</strong><small>${comment.author ? `${escapeHtml(comment.author)} · ` : ""}Incluído em ${escapeHtml(formatDateTime(comment.createdAt))}</small></span>
       </div>
       <button class="btn btn-soft btn-sm" type="button">Remover</button>`;
     row.querySelector("button").addEventListener("click", () => { tempComments = tempComments.filter(c => c.id !== comment.id); cardModalDirty = true; renderEditComments(); });
@@ -1780,10 +1908,16 @@ function openViewCardModal(cardId) {
 
   const { card, columnId } = found;
   const isParticipant = Boolean(sharedEntry);
+  const isCompleted = columnId === "done";
+  viewEditCardBtn.dataset.cardId = card.id;
 
   viewCardTitle.textContent       = card.title || "Sem título";
   viewCardDescription.textContent = card.description || "Sem descrição.";
   viewCardColumn.textContent      = `Coluna: ${columnLabel(columnId)}`;
+  if (viewCardCreatedAt) {
+    viewCardCreatedAt.textContent = `Incluído: ${formatDateTime(card.createdAt)}`;
+    viewCardCreatedAt.classList.remove("hidden");
+  }
 
   if (card.owner) { viewCardOwner.textContent = `👤 ${card.owner}`; viewCardOwner.classList.remove("hidden"); }
   else { viewCardOwner.classList.add("hidden"); }
@@ -1801,8 +1935,8 @@ function openViewCardModal(cardId) {
   if (participants.length) {
     participants.forEach(p => {
       const chip = document.createElement("span");
-      chip.className = "participant-chip";
-      chip.textContent = participantDisplayName(p);
+      chip.className = "participant-chip participant-chip-dated";
+      chip.innerHTML = `<strong>${escapeHtml(participantDisplayName(p))}</strong><small>Incluído em ${escapeHtml(formatDateTime(p.added_at || card.createdAt))}</small>`;
       if (p.user_id && supabase) {
         chip.classList.add("is-clickable-bio");
         chip.title = "Ver perfil";
@@ -1824,9 +1958,11 @@ function openViewCardModal(cardId) {
     checklist.forEach(item => {
       const row = document.createElement("button");
       row.type = "button";
-      row.className = `view-check-item is-clickable ${item.done ? "done" : ""}`;
-      row.innerHTML = `<span class="view-check-bullet"></span><span>${escapeHtml(item.text)}</span>`;
+      row.className = `view-check-item ${isCompleted ? "is-locked" : "is-clickable"} ${item.done ? "done" : ""}`;
+      row.innerHTML = `<span class="view-check-bullet"></span><span class="view-check-copy"><strong>${escapeHtml(item.text)}</strong><small>Incluído em ${escapeHtml(formatDateTime(item.createdAt || card.createdAt))}</small></span>`;
+      row.disabled = isCompleted;
       row.addEventListener("click", async () => {
+        if (isCompleted) return;
         if (isParticipant) {
           const ok = await toggleSharedChecklistItem(card.id, item.id);
           if (ok) { openViewCardModal(card.id); }
@@ -1857,9 +1993,9 @@ function openViewCardModal(cardId) {
         <div class="view-comment-text">${escapeHtml(comment.text)}</div>
         <div class="view-comment-meta-row">
           <div class="view-comment-meta">${comment.author ? `${escapeHtml(comment.author)} · ` : ""}${formatDateTime(comment.createdAt)}</div>
-          ${!isParticipant ? `<button type="button" class="btn btn-soft btn-sm">Remover</button>` : ""}
+          ${!isParticipant && !isCompleted ? `<button type="button" class="btn btn-soft btn-sm">Remover</button>` : ""}
         </div>`;
-      if (!isParticipant) {
+      if (!isParticipant && !isCompleted) {
         row.querySelector("button").addEventListener("click", () => {
           card.comments = (card.comments || []).filter(c => c.id !== comment.id);
           updateOwnedCardInCloud(card.id, { comments: card.comments || [] })
@@ -1871,24 +2007,27 @@ function openViewCardModal(cardId) {
     });
   } else { viewCommentsList.innerHTML = `<div class="empty-state">Nenhum comentário.</div>`; }
 
-  // "Mover para" section — shown for both owner (convenience) and participant
-  injectMoveSection(card.id, columnId, isParticipant);
+  // Cards concluídos ficam travados; a única ação disponível é reabrir.
+  injectMoveSection(card.id, columnId, isParticipant, isCompleted);
 
-  // Edit button — show for owner, hide for participant (they use the modal directly)
-  if (isParticipant) {
+  viewNewCommentInput.disabled = isCompleted;
+  viewAddCommentBtn.disabled = isCompleted;
+  viewNewCommentInput.placeholder = isCompleted ? "Card concluído: reabra para comentar" : "Adicionar comentário";
+  viewNewCommentInput.closest(".inline-add")?.classList.toggle("is-locked", isCompleted);
+
+  if (isParticipant || isCompleted) {
     viewEditCardBtn.style.display = "none";
   } else {
     viewEditCardBtn.style.display = "";
-    viewEditCardBtn.dataset.cardId = card.id;
   }
 
-  // Participant notice in view modal
-  injectViewParticipantNotice(isParticipant);
+  injectViewParticipantNotice(isParticipant, isCompleted);
+  injectCardStatusNotice(card, isCompleted);
 
   openModal(viewCardModalOverlay);
 }
 
-function injectViewParticipantNotice(isParticipant) {
+function injectViewParticipantNotice(isParticipant, isCompleted = false) {
   const existing = document.getElementById("view-participant-notice");
   if (existing) existing.remove();
   if (!isParticipant) return;
@@ -1896,68 +2035,89 @@ function injectViewParticipantNotice(isParticipant) {
   notice.id = "view-participant-notice";
   notice.className = "participant-notice";
   notice.style.marginBottom = "12px";
-  notice.innerHTML = `<span>🤝</span><span><strong>Você é participante</strong> deste card. Pode marcar checklist, adicionar comentários e mover o card.</span>`;
+  notice.innerHTML = isCompleted
+    ? `<span>🔒</span><span><strong>Você é participante</strong> deste card concluído. O conteúdo está travado até que o card seja reaberto.</span>`
+    : `<span>🤝</span><span><strong>Você é participante</strong> deste card. Pode marcar checklist, adicionar comentários e mover o card.</span>`;
   const modalBody = viewCardModalOverlay.querySelector(".modal-body");
   modalBody.insertBefore(notice, modalBody.firstChild);
 }
 
-function injectMoveSection(cardId, currentCol, isParticipant) {
+function injectCardStatusNotice(card, isCompleted) {
+  const existing = document.getElementById("view-card-status-notice");
+  if (existing) existing.remove();
+  if (!isCompleted && !card.isReopened) return;
+  const notice = document.createElement("div");
+  notice.id = "view-card-status-notice";
+  notice.className = `card-status-notice ${isCompleted ? "is-completed" : "is-reopened"}`;
+  if (isCompleted) {
+    notice.innerHTML = `<span class="status-notice-icon">🔒</span><div><strong>Card concluído e travado</strong><span>Concluído em ${escapeHtml(formatDateTime(card.completedAt || card.updatedAt || card.createdAt))}. Reabra para voltar a editar, comentar ou alterar o checklist.</span></div>`;
+  } else {
+    notice.innerHTML = `<span class="status-notice-icon">↩</span><div><strong>Card reaberto</strong><span>Reaberto em ${escapeHtml(formatDateTime(card.reopenedAt || card.createdAt))}. Esta marca permanece enquanto o card estiver em andamento.</span></div>`;
+  }
+  const modalBody = viewCardModalOverlay.querySelector(".modal-body");
+  modalBody.insertBefore(notice, modalBody.firstChild);
+}
+
+function injectMoveSection(cardId, currentCol, isParticipant, isCompleted = false) {
   const existing = document.getElementById("view-move-section");
   if (existing) existing.remove();
 
   const section = document.createElement("div");
   section.id = "view-move-section";
+  section.dataset.cardId = String(cardId);
   section.className = "view-section";
-  section.innerHTML = `
-    <h4>Mover para</h4>
-    <div class="view-move-section">
-      <select class="input" id="view-move-select">
-        <option value="todo" ${currentCol === "todo" ? "selected" : ""}>📋 Pendente</option>
-        <option value="doing" ${currentCol === "doing" ? "selected" : ""}>🔄 Em Progresso</option>
-        <option value="done" ${currentCol === "done" ? "selected" : ""}>✅ Concluído</option>
-      </select>
-      <button class="btn btn-primary" id="view-move-btn" type="button">Mover</button>
-    </div>`;
+
+  if (isCompleted) {
+    section.innerHTML = `
+      <h4>Ações do card</h4>
+      <div class="reopen-action-box">
+        <div><strong>Este card está travado.</strong><span>Para voltar a alterar as informações, reabra-o.</span></div>
+        <button class="btn btn-reopen" id="view-reopen-btn" type="button">↩ Reabrir card</button>
+      </div>`;
+  } else {
+    section.innerHTML = `
+      <h4>Mover para</h4>
+      <div class="view-move-section">
+        <select class="input" id="view-move-select">
+          <option value="todo" ${currentCol === "todo" ? "selected" : ""}>📋 Pendente</option>
+          <option value="doing" ${currentCol === "doing" ? "selected" : ""}>🔄 Em Progresso</option>
+          <option value="done">✅ Concluído</option>
+        </select>
+        <button class="btn btn-primary" id="view-move-btn" type="button">Mover</button>
+      </div>`;
+  }
 
   const modalBody = viewCardModalOverlay.querySelector(".modal-body");
-  // Insert before comments section (last child)
   const commentsSection = viewCommentsList.closest(".view-section");
   if (commentsSection) modalBody.insertBefore(section, commentsSection);
   else modalBody.appendChild(section);
 
-  document.getElementById("view-move-btn").addEventListener("click", async () => {
-    const newCol = document.getElementById("view-move-select").value;
-    if (newCol === currentCol) return;
+  if (isCompleted) {
+    document.getElementById("view-reopen-btn")?.addEventListener("click", async () => {
+      const ok = await transitionCardStatus(cardId, "doing");
+      if (ok) closeViewCardModal();
+    });
+    return;
+  }
 
-    if (isParticipant) {
-      await moveSharedCardToColumn(cardId, newCol);
-      closeViewCardModal();
-    } else {
-      // Owner move
-      const project = getCurrentProject();
-      if (!project) return;
-      const found = findCard(cardId);
-      if (!found) return;
-      const card = found.card;
-      project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== cardId);
-      project.columns[newCol].push(card);
-      try {
-        await persistProjectCardsOrder(project);
-        saveState(); renderBoard();
-        closeViewCardModal();
-      } catch (error) {
-        console.error("Erro ao mover card:", error);
-        alert("Não foi possível mover o card online.");
-      }
-    }
+  document.getElementById("view-move-btn")?.addEventListener("click", async () => {
+    const newCol = document.getElementById("view-move-select")?.value;
+    if (!newCol || newCol === currentCol) return;
+    const ok = await transitionCardStatus(cardId, newCol);
+    if (ok) closeViewCardModal();
   });
 }
-
 function closeViewCardModal() { viewNewCommentInput.value = ""; closeModal(viewCardModalOverlay); }
 
 async function handleViewAddComment() {
   const cardId = viewEditCardBtn.dataset.cardId;
   const text   = viewNewCommentInput.value.trim();
+  const lockedShared = findSharedCard(cardId || "");
+  const lockedOwned = cardId ? findCard(cardId) : null;
+  if (lockedShared?.columnId === "done" || lockedOwned?.columnId === "done") {
+    alert("Este card está concluído e travado. Reabra-o antes de comentar.");
+    return;
+  }
 
   // Find card — shared or owned
   if (!text) return;
@@ -1988,41 +2148,6 @@ async function handleViewAddComment() {
   }
 }
 
-// Store current view card id for shared comments
-const _origViewAddComment = handleViewAddComment;
-viewAddCommentBtn.addEventListener("click", async () => {
-  const text = viewNewCommentInput.value.trim();
-  if (!text) return;
-
-  // Determine which card is open
-  const moveBtn = document.getElementById("view-move-btn");
-  const moveSel = document.getElementById("view-move-select");
-  const cardId  = viewEditCardBtn.dataset.cardId;
-
-  const sc = sharedCardsState.find(s => s.card.id === cardId);
-  if (sc) {
-    const ok = await addSharedCardComment(sc.card.id, text);
-    if (ok) { viewNewCommentInput.value = ""; openViewCardModal(sc.card.id); renderBoard(); }
-    return;
-  }
-
-  if (!cardId || !text) return;
-  const found = findCard(cardId);
-  if (!found) return;
-  if (!Array.isArray(found.card.comments)) found.card.comments = [];
-  found.card.comments.push({ id: uid(), text, author: authUser ? getUserPresentation(authUser).fullName : "", createdAt: new Date().toISOString() });
-  viewNewCommentInput.value = "";
-  try {
-    await updateOwnedCardInCloud(cardId, { comments: found.card.comments || [] });
-    saveState(); openViewCardModal(cardId); renderBoard();
-  } catch (error) {
-    console.error("Erro ao adicionar comentário:", error);
-    alert("Não foi possível salvar o comentário online.");
-  }
-});
-
-viewNewCommentInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); viewAddCommentBtn.click(); }});
-
 // ============================================================
 // FIND CARD (owned)
 // ============================================================
@@ -2037,30 +2162,112 @@ function findCard(cardId) {
 }
 
 // ============================================================
+// STATUS DO CARD — conclusão, trava e reabertura
+// ============================================================
+function showStatusConfirmation({ mode, cardTitle }) {
+  if (!statusConfirmOverlay) return Promise.resolve(window.confirm("Confirmar ação?"));
+  if (statusConfirmResolver) resolveStatusConfirmation(false);
+
+  const completing = mode === "complete";
+  statusConfirmIcon.textContent = completing ? "✅" : "↩";
+  statusConfirmTitle.textContent = completing ? "Concluir este card?" : "Reabrir este card?";
+  statusConfirmMessage.textContent = completing
+    ? `Você realmente deseja colocar “${cardTitle}” em Concluído?`
+    : `Você realmente deseja reabrir “${cardTitle}”?`;
+  statusConfirmWarning.innerHTML = completing
+    ? `<strong>Depois da conclusão, o card ficará travado.</strong><span>Não será possível editar, comentar, marcar checklist, mover ou excluir até que ele seja reaberto. Todos os participantes receberão uma notificação.</span>`
+    : `<strong>O card voltará para Em Progresso.</strong><span>Ele receberá a marca “REABERTO”, ficará destacado em vermelho/salmão e todos os participantes receberão uma notificação.</span>`;
+  statusConfirmAcceptBtn.textContent = completing ? "Sim, concluir" : "Sim, reabrir";
+  statusConfirmAcceptBtn.className = completing ? "btn btn-primary" : "btn btn-reopen";
+  openModal(statusConfirmOverlay);
+  return new Promise(resolve => { statusConfirmResolver = resolve; });
+}
+
+function resolveStatusConfirmation(accepted) {
+  if (!statusConfirmResolver) {
+    if (statusConfirmOverlay) closeModal(statusConfirmOverlay);
+    return;
+  }
+  const resolver = statusConfirmResolver;
+  statusConfirmResolver = null;
+  closeModal(statusConfirmOverlay);
+  resolver(Boolean(accepted));
+}
+
+async function transitionCardStatus(cardId, targetColumnId) {
+  if (!supabase || !authUser || !cardId) return false;
+  const shared = findSharedCard(cardId);
+  const owned = shared ? null : findCard(cardId);
+  const currentColumn = shared?.columnId || owned?.columnId;
+  const card = shared?.card || owned?.card;
+  if (!card || !currentColumn || currentColumn === targetColumnId) return false;
+
+  let confirmationMode = null;
+  if (targetColumnId === "done" && currentColumn !== "done") confirmationMode = "complete";
+  if (currentColumn === "done" && targetColumnId !== "done") confirmationMode = "reopen";
+
+  if (confirmationMode) {
+    const accepted = await showStatusConfirmation({ mode: confirmationMode, cardTitle: card.title || "Sem título" });
+    if (!accepted) return false;
+  }
+
+  try {
+    const { error } = await supabase.rpc("transition_card_status", {
+      p_card_id: String(cardId),
+      p_target_column: targetColumnId
+    });
+    if (error) throw error;
+
+    await Promise.all([loadCloudData(), loadSharedCards(), loadPersistentNotifications()]);
+    kqRenderNotifications();
+    return true;
+  } catch (error) {
+    console.error("Erro ao alterar status do card:", error);
+    alert(`Não foi possível alterar o status do card online.\n\nMotivo: ${formatCloudError(error)}`);
+    return false;
+  }
+}
+
+// ============================================================
 // DRAG AND DROP (owned cards only)
 // ============================================================
 async function moveCardToColumnAtPosition(cardId, targetColumnId, targetContainer) {
   const project = getCurrentProject();
   if (!project) return;
-  let draggedCard = null;
-  for (const columnId of Object.keys(project.columns)) {
-    const index = project.columns[columnId].findIndex(c => c.id === cardId);
-    if (index !== -1) { draggedCard = project.columns[columnId].splice(index, 1)[0]; break; }
+  const found = findCard(cardId);
+  if (!found) { renderBoard(); return; }
+
+  if (found.columnId === "done") {
+    renderBoard();
+    alert("Cards concluídos ficam travados. Abra o card e use Reabrir.");
+    return;
   }
-  if (!draggedCard) return;
+
+  if (found.columnId !== targetColumnId) {
+    const ok = await transitionCardStatus(cardId, targetColumnId);
+    if (!ok) renderBoard();
+    return;
+  }
+
+  // Reordenação dentro da mesma coluna não altera o status.
+  const draggedCard = project.columns[found.columnId].splice(
+    project.columns[found.columnId].findIndex(c => c.id === cardId), 1
+  )[0];
   const orderedIds = [...targetContainer.querySelectorAll(".card")].map(el => el.dataset.cardId).filter(Boolean);
   const insertIndex = orderedIds.indexOf(cardId);
   if (insertIndex === -1) project.columns[targetColumnId].push(draggedCard);
   else project.columns[targetColumnId].splice(insertIndex, 0, draggedCard);
+
   try {
     await persistProjectCardsOrder(project);
-    saveState(); renderBoard();
+    saveState();
+    renderBoard();
   } catch (error) {
     console.error("Erro ao reordenar card:", error);
+    await loadCloudData();
     alert("Não foi possível salvar a nova ordem online.");
   }
 }
-
 function getDragAfterElement(container, mouseY) {
   const draggableCards = [...container.querySelectorAll(".card:not(.dragging)")];
   return draggableCards.reduce((closest, child) => {
@@ -2185,7 +2392,12 @@ function updateDashboard(project) {
 function columnLabel(id) { return { todo: "A Fazer", doing: "Em Progresso", done: "Concluído" }[id] || id; }
 function truncate(text, max) { return text.length > max ? `${text.slice(0, max).trim()}...` : text; }
 function formatDate(d) { if (!d) return ""; return new Date(`${d}T00:00:00`).toLocaleDateString("pt-BR"); }
-function formatDateTime(d) { if (!d) return ""; return new Date(d).toLocaleString("pt-BR"); }
+function formatDateTime(d) {
+  if (!d) return "Data não informada";
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return "Data não informada";
+  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
 function clone(data) { return JSON.parse(JSON.stringify(data)); }
 function escapeHtml(text) {
   return String(text)
@@ -2228,6 +2440,48 @@ function kqCloseNotif() {
   kqNotifOpen = false;
 }
 
+async function loadPersistentNotifications() {
+  if (!supabase || !authUser) { persistentNotifications = []; return; }
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id,user_id,actor_user_id,event_type,card_id,project_id,title,body,created_at")
+    .eq("user_id", authUser.id)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) {
+    console.warn("Não foi possível carregar notificações persistentes:", error);
+    persistentNotifications = [];
+    return;
+  }
+  persistentNotifications = data || [];
+}
+
+function setupNotificationRealtime() {
+  teardownNotificationRealtime();
+  if (!supabase || !authUser) return;
+  notificationRealtimeChannel = supabase
+    .channel(`kanban-notifications-${authUser.id}`)
+    .on("postgres_changes", {
+      event: "INSERT",
+      schema: "public",
+      table: "notifications",
+      filter: `user_id=eq.${authUser.id}`
+    }, payload => {
+      const next = payload.new;
+      if (!next?.id) return;
+      persistentNotifications = [next, ...persistentNotifications.filter(item => item.id !== next.id)].slice(0, 100);
+      kqRenderNotifications();
+    })
+    .subscribe();
+}
+
+function teardownNotificationRealtime() {
+  if (notificationRealtimeChannel && supabase) {
+    supabase.removeChannel(notificationRealtimeChannel);
+  }
+  notificationRealtimeChannel = null;
+}
+
 async function loadNotificationReads() {
   if (!supabase || !authUser) { notificationSeenIds = new Set(); return; }
   const { data, error } = await supabase
@@ -2266,7 +2520,14 @@ function kqMarkAllNotifRead() {
 }
 
 function kqBuildNotifications() {
-  const items = [];
+  const items = persistentNotifications.map(notification => ({
+    id: String(notification.id),
+    icon: notification.event_type === "card_reopened" ? "↩️" : "✅",
+    title: notification.title || (notification.event_type === "card_reopened" ? "Card reaberto" : "Card concluído"),
+    body: notification.body || "O status de um card compartilhado foi alterado.",
+    time: notification.created_at,
+    cardId: notification.card_id
+  }));
   const today    = new Date(); today.setHours(0,0,0,0);
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate()+1);
 

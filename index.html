@@ -135,7 +135,7 @@
         <div class="column" data-col="done">
           <div class="column-header">
             <div><h3>Concluído</h3><span class="column-count" id="count-done">0</span></div>
-            <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
+            <button class="btn btn-soft btn-sm add-card-btn" disabled title="Cards concluídos devem ser movidos para esta coluna após confirmação.">🔒 Travada</button>
           </div>
           <div class="cards"></div>
         </div>
@@ -191,6 +191,7 @@
         <button class="icon-btn" id="closeCardModalBtn" type="button">✕</button>
       </div>
       <div class="modal-body">
+        <div id="cardCreatedInfo" class="creation-info hidden"></div>
         <div class="field">
           <label class="field-label" for="cardTitleInput">Título</label>
           <input id="cardTitleInput" class="input" type="text" placeholder="Digite o título do card" />
@@ -263,6 +264,7 @@
           <div class="view-meta-row">
             <span id="viewCardOwner" class="meta-chip hidden"></span>
             <span id="viewCardDate" class="meta-chip hidden"></span>
+            <span id="viewCardCreatedAt" class="meta-chip hidden"></span>
             <span id="viewCardColumn" class="meta-chip"></span>
           </div>
         </div>
@@ -308,6 +310,27 @@
       <div class="modal-footer">
         <button id="viewEditCardBtn" class="btn btn-soft" type="button">Editar</button>
         <button id="closeViewCardFooterBtn" class="btn btn-primary" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Confirmação de conclusão / reabertura ─────────────────── -->
+  <div class="modal-overlay hidden" id="statusConfirmOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm status-confirm-card" role="dialog" aria-modal="true" aria-labelledby="statusConfirmTitle">
+      <div class="modal-header">
+        <div class="status-confirm-heading">
+          <span id="statusConfirmIcon" class="status-confirm-icon">✅</span>
+          <h3 id="statusConfirmTitle">Confirmar ação</h3>
+        </div>
+        <button class="icon-btn" id="statusConfirmCloseBtn" type="button" aria-label="Fechar">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="statusConfirmMessage" class="status-confirm-message"></p>
+        <div id="statusConfirmWarning" class="status-confirm-warning"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="statusConfirmCancelBtn" class="btn btn-soft" type="button">Cancelar</button>
+        <button id="statusConfirmAcceptBtn" class="btn btn-primary" type="button">Confirmar</button>
       </div>
     </div>
   </div>

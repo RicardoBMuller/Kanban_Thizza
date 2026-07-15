@@ -2576,3 +2576,203 @@ html[data-theme="light"] .project-actions-menu {
 .confirm-card h4 { font-size: 16px; font-weight: 700; color: var(--text-primary); margin: 0 0 10px; }
 .confirm-card p  { font-size: 14px; color: var(--text-muted); margin: 0 0 24px; line-height: 1.5; }
 .confirm-card-actions { display: flex; gap: 10px; justify-content: center; }
+
+
+/* ============================================================
+   STATUS, TRAVA, REABERTURA E DATAS DE INCLUSÃO
+   ============================================================ */
+.project-item-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.project-created-date {
+  color: var(--muted);
+  font-size: 0.69rem;
+  line-height: 1.2;
+}
+.project-list li.active .project-created-date { color: rgba(255,255,255,.78); }
+
+.creation-info {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: rgba(255,255,255,.045);
+  font-size: .82rem;
+  font-weight: 600;
+}
+
+.card-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 9px;
+  position: relative;
+  z-index: 3;
+}
+.card-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: .69rem;
+  font-weight: 800;
+  letter-spacing: .015em;
+}
+.card-status-badge.completed {
+  color: #f7f7f8;
+  background: #54555e;
+  border: 1px solid rgba(255,255,255,.16);
+}
+.card-status-badge.reopened {
+  color: #6f1f27;
+  background: rgba(255,255,255,.62);
+  border: 1px solid rgba(112,31,39,.16);
+}
+.card.is-completed {
+  cursor: default;
+  filter: saturate(.68);
+  background: linear-gradient(180deg, #e6e5e8, #d9d8dc);
+  border-color: rgba(70,70,78,.18);
+}
+.card.is-completed:hover { transform: none; border-color: rgba(70,70,78,.24); }
+.card.is-completed::after {
+  content: "TRAVADO";
+  position: absolute;
+  right: -24px;
+  top: 20px;
+  transform: rotate(34deg);
+  padding: 4px 28px;
+  color: rgba(52,52,59,.27);
+  border: 1px solid rgba(52,52,59,.14);
+  font-size: .62rem;
+  font-weight: 900;
+  letter-spacing: .18em;
+  pointer-events: none;
+}
+.card.is-reopened {
+  background: linear-gradient(145deg, #ffd8d0 0%, #f8b7ae 55%, #f6a79f 100%);
+  border-color: rgba(154,56,65,.28);
+  box-shadow: 0 16px 30px rgba(132,42,50,.18);
+}
+.card.is-reopened:hover {
+  background: linear-gradient(145deg, #ffe0da 0%, #fac1b9 55%, #f8b0a8 100%);
+  border-color: rgba(154,56,65,.38);
+}
+.reopened-watermark {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%,-50%) rotate(-18deg);
+  color: rgba(121,30,39,.10);
+  font-size: clamp(2rem, 5vw, 3.3rem);
+  font-weight: 900;
+  letter-spacing: .12em;
+  pointer-events: none;
+  z-index: -1;
+  white-space: nowrap;
+}
+.completed-meta { color: #555760; }
+.reopened-meta { color: #8b2934; border-color: rgba(139,41,52,.18); }
+
+.edit-item-copy,
+.view-check-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.edit-item-copy strong,
+.view-check-copy strong { font-size: .88rem; font-weight: 700; }
+.edit-item-copy small,
+.view-check-copy small {
+  color: var(--muted);
+  font-size: .71rem;
+  font-weight: 500;
+}
+
+.participant-chip-dated {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 11px;
+  white-space: normal;
+}
+.participant-chip-dated small {
+  color: var(--muted);
+  font-size: .68rem;
+  font-weight: 500;
+}
+
+.view-check-item.is-locked {
+  cursor: not-allowed;
+  opacity: .7;
+}
+.inline-add.is-locked { opacity: .62; }
+
+.card-status-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+}
+.card-status-notice .status-notice-icon { font-size: 1.45rem; }
+.card-status-notice div { display: flex; flex-direction: column; gap: 4px; }
+.card-status-notice strong { font-size: .92rem; }
+.card-status-notice span:not(.status-notice-icon) { color: var(--muted); font-size: .82rem; line-height: 1.45; }
+.card-status-notice.is-completed { background: rgba(110,111,121,.12); border-color: rgba(160,161,171,.22); }
+.card-status-notice.is-reopened { background: rgba(232,103,96,.14); border-color: rgba(232,103,96,.28); }
+
+.reopen-action-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(232,103,96,.26);
+  background: rgba(232,103,96,.10);
+}
+.reopen-action-box > div { display: flex; flex-direction: column; gap: 4px; }
+.reopen-action-box span { color: var(--muted); font-size: .82rem; }
+.btn-reopen {
+  color: #fff;
+  background: linear-gradient(135deg, #d85d63, #bb3f4f);
+  box-shadow: 0 9px 18px rgba(187,63,79,.24);
+}
+.btn-reopen:hover { background: linear-gradient(135deg, #e46a70, #c84958); }
+
+.status-confirm-heading { display: flex; align-items: center; gap: 10px; }
+.status-confirm-heading h3 { margin: 0; }
+.status-confirm-icon { font-size: 1.35rem; }
+.status-confirm-message { margin: 0 0 14px; color: var(--text); line-height: 1.55; }
+.status-confirm-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(196,59,115,.22);
+  background: rgba(196,59,115,.09);
+}
+.status-confirm-warning strong { font-size: .88rem; }
+.status-confirm-warning span { color: var(--muted); font-size: .8rem; line-height: 1.48; }
+
+@media (max-width: 620px) {
+  .reopen-action-box { align-items: stretch; flex-direction: column; }
+  .reopen-action-box .btn { width: 100%; }
+  .card-status-row { padding-right: 22px; }
+}
+
+/* Mantém a marca d'água visível sem cobrir o conteúdo do card. */
+.card.is-reopened > .reopened-watermark { z-index: 0; }
+.card.is-reopened > *:not(.reopened-watermark) {
+  position: relative;
+  z-index: 1;
+}

@@ -1,0 +1,19 @@
+KANBAN QUEST — VERSÃO 2026.07.15-status-lock-3
+
+IMPLEMENTADO
+- Modal de confirmação para concluir cards.
+- Card concluído totalmente travado no frontend e no banco.
+- Opção de reabertura com modal de confirmação.
+- Notificações persistentes para todos os participantes na conclusão e reabertura.
+- Realtime para novas notificações.
+- Card reaberto com destaque vermelho/salmão e marca d'água REABERTO.
+- Datas de inclusão em projetos, cards, participantes, checklists e comentários.
+- Migração não destrutiva para bancos já instalados.
+
+ORDEM PARA O BANCO ATUAL
+1. Executar supabase/04_ATUALIZAR_CONCLUSAO_REABERTURA.sql
+2. Executar supabase/02_VERIFICAR_INSTALACAO.sql
+3. Publicar os arquivos do frontend no GitHub Pages
+
+ATENÇÃO
+O arquivo 01_RECRIAR_BANCO.sql apaga e recria as tabelas. No banco atual, use o arquivo 04.

@@ -23,8 +23,8 @@ A connection string pode ser copiada em **Connect** no painel do Supabase. Não 
 
 ## Rotina recomendada
 
-- mantenha `01_RECRIAR_BANCO.sql` no repositório;
-- gere um dump de dados antes de alterações grandes;
+- mantenha `01_RECRIAR_BANCO.sql` e as migrações, como `04_ATUALIZAR_CONCLUSAO_REABERTURA.sql`, no repositório;
+- gere um dump de dados antes de alterações grandes ou de executar uma nova migração;
 - confira **Database > Backups** ao menos uma vez por mês;
 - nunca exclua um projeto Supabase antes de baixar o backup;
 - guarde a senha do banco em um gerenciador de senhas;
