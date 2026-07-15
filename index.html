@@ -1,156 +1,436 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Status da Guerra chamada FCC</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap');
-
-        body {
-            font-family: 'Montserrat', sans-serif;
-            background: linear-gradient(135deg, #ffe5e5, #ffcccc);
-            color: #4a0000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            height: 100vh;
-            margin: 0;
-            padding: 0 20px;
-            text-align: center;
-            overflow: hidden;
-            animation: fadeIn 1.5s ease-in-out;
-        }
-
-        /* Background animation */
-        body::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(255,0,0,0.1), rgba(255,0,0,0) 70%);
-            animation: rotate 10s linear infinite;
-            z-index: -1;
-        }
-
-        @keyframes rotate {
-            0% { transform: rotate(0); }
-            100% { transform: rotate(360deg); }
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        img {
-            width: 100%;
-            max-width: 750px;
-            height: auto;
-            border-radius: 10px;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-            margin-bottom: 20px;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            animation: imageFloat 4s ease-in-out infinite alternate;
-        }
-
-        img:hover {
-            transform: scale(1.1);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-        }
-
-        @keyframes imageFloat {
-            from { transform: translateY(0); }
-            to { transform: translateY(-10px); }
-        }
-
-        h1 {
-            font-size: 3rem;
-            color: #b30000;
-            margin: 0;
-            letter-spacing: 3px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.15);
-            font-weight: 600;
-            animation: textBounce 1s ease-in-out infinite alternate;
-        }
-
-        @keyframes textBounce {
-            from { transform: scale(1); }
-            to { transform: scale(1.05); }
-        }
-
-        p {
-            font-size: 1.7rem;
-            margin: 0;
-            color: #660000;
-        }
-
-        .contador {
-            margin-top: 20px;
-            font-size: 2.2rem;
-            font-weight: 600;
-            color: #ff1a1a;
-            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.1);
-            transition: color 0.5s ease;
-            animation: fadeColor 2s infinite alternate;
-        }
-
-        @keyframes fadeColor {
-            from { color: #ff1a1a; }
-            to { color: #ff4d4d; }
-        }
-
-        .pergunta {
-            margin-top: 20px;
-            font-size: 1.4rem;
-            color: #cc0000;
-            font-style: italic;
-            letter-spacing: 1px;
-            transition: color 0.3s ease;
-        }
-
-        .pergunta:hover {
-            color: #ff4d4d;
-        }
-
-        @media (max-width: 768px) {
-            h1 { font-size: 2.5rem; }
-            p { font-size: 1.4rem; }
-            .contador { font-size: 1.8rem; }
-            .pergunta { font-size: 1.2rem; }
-        }
-    </style>
-</head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kanban Quest</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  </head>
 <body>
-    <img src="https://cdn.fcc.org.br/PRODUCAO/eY4uhGpLrjmyY61CdQplMmtyK6v83SLYguU8QTSL6CC0vLPtzcYxfi0BaeT2WQIw7OSiA4wcw81MfMNnRJ24jxuxbpEs3rZyDuhr1zAwB5aQJ3W6FgdvOegLRIIoMsW2n9VecbnVNgXgEzTh.webp" alt="Imagem no topo">
+  <div id="introSplash" class="intro-splash" aria-hidden="true">
+    <div class="intro-splash-glow"></div>
+    <div class="intro-splash-card">
+      <div class="intro-splash-mark">KQ</div>
+      <div class="intro-splash-copy">
+        <strong>Kanban Quest</strong>
+        <span>Organize o seu dia!</span>
+      </div>
+    </div>
+  </div>
 
-    <h1>Dias sem baixas nesta guerra:</h1>
-    <p class="contador" id="contador"></p>
-    <p class="pergunta">E você, arrisca um palpite da próxima baixa?</p>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-card">
+        <img id="brandAvatar" class="brand-avatar hidden" alt="Avatar do usuário" />
+        <div id="brandMark" class="brand-mark">KQ</div>
+        <div class="brand-copy">
+          <h1 id="brandUserName">Kanban Quest</h1>
+          <p>Organize o seu dia!</p>
+        </div>
+      </div>
 
-    <script>
-        // Data final definida para 12 de Fevereiro de 2026 às 17:00:00
-        const dataFinal = new Date('2026-02-12T17:00:00');
+      <section class="panel">
+        <div class="panel-header">
+          <span>Projetos</span>
+          <button id="newProjectBtn" class="btn btn-soft btn-sm">+ Projeto</button>
+        </div>
+        <ul id="projectList" class="project-list"></ul>
+      </section>
 
-        function atualizarContadores() {
-            const agora = new Date();
-            const diffTime = Math.abs(dataFinal - agora);
-            
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            const diffHours = Math.floor((diffTime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            const diffMinutes = Math.floor((diffTime % (1000 * 60 * 60)) / (1000 * 60));
-            const diffSeconds = Math.floor((diffTime % (1000 * 60)) / 1000);
+      <!-- Messages section removed from sidebar — accessible via floating chat widget only -->
 
-            document.getElementById('contador').textContent = 
-                `${diffDays} dias, ${diffHours} horas, ${diffMinutes} minutos e ${diffSeconds} segundos`;
-        }
+      <section class="panel">
+        <div class="panel-header"><span>Busca</span></div>
+        <input id="searchInput" class="input" type="text" placeholder="Buscar cards, labels, comentários..." />
+      </section>
 
-        // Executa imediatamente para evitar o delay de 1 segundo do setInterval
-        atualizarContadores();
-        setInterval(atualizarContadores, 1000);
-    </script>
+      <section class="panel dashboard-panel">
+        <div class="panel-header"><span>Dashboard</span></div>
+        <div class="dashboard-stack">
+          <article class="dashboard-stat dashboard-stat-primary">
+            <div class="dashboard-stat-icon">🗂️</div>
+            <div class="dashboard-stat-copy"><span>Cards totais</span><strong id="dashTotalCards">0</strong></div>
+          </article>
+          <article class="dashboard-stat dashboard-stat-success">
+            <div class="dashboard-stat-icon">✅</div>
+            <div class="dashboard-stat-copy"><span>Concluídos</span><strong id="dashCompletedCards">0</strong></div>
+          </article>
+          <article class="dashboard-stat dashboard-stat-warning">
+            <div class="dashboard-stat-icon">⏳</div>
+            <div class="dashboard-stat-copy"><span>Atrasados</span><strong id="dashOverdueCards">0</strong></div>
+          </article>
+          <article class="dashboard-stat dashboard-stat-accent">
+            <div class="dashboard-stat-icon">📋</div>
+            <div class="dashboard-stat-copy"><span>Checklist concluído</span><strong id="dashChecklistDone">0%</strong></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Chat sidebar section — visible only when logged in -->
+      <section class="panel sidebar-chat-section hidden" id="sidebarChatSection">
+        <div class="panel-header">
+          <span>💬 Mensagens</span>
+          <span id="sidebarUnreadBadge" class="sidebar-unread-badge hidden">0</span>
+        </div>
+        <div class="sidebar-chat-search-wrap" id="chatSearchWrap">
+          <input id="chatSearchInput" class="input sidebar-chat-input" type="text"
+                 placeholder="Buscar usuário..." autocomplete="off" />
+        </div>
+        <div id="chatConvList" class="sidebar-conv-list"></div>
+      </section>
+
+      <!-- Hidden theme buttons kept for JS compat -->
+      <button id="lightBtn" style="display:none" aria-hidden="true"></button>
+      <button id="darkBtn"  style="display:none" aria-hidden="true"></button>
+    </aside>
+
+    <main class="main-area">
+      <button id="sidebarToggleBtn" class="sidebar-toggle" type="button" aria-label="Esconder menu lateral" title="Esconder menu lateral">☰</button>
+
+      <header class="topbar">
+        <div>
+          <h2 id="boardTitle">Projeto Inicial</h2>
+          <p id="projectCount">1 projeto(s) no total</p>
+        </div>
+        <div class="topbar-actions">
+          <!-- Notification bell — hidden by default, shown when logged in -->
+          <button id="notifBtn" class="notif-btn hidden" type="button" aria-label="Notificações" title="Notificações">
+            🔔
+            <span id="notifBadge" class="notif-badge hidden">0</span>
+          </button>
+          <button id="loginOpenBtn" class="btn btn-google-login" type="button">
+            <span class="google-mark" aria-hidden="true">
+              <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#EA4335" d="M9 7.363v3.49h4.85c-.213 1.122-.853 2.072-1.812 2.711l2.928 2.273C16.674 14.266 17.5 11.916 17.5 9c0-.554-.05-1.087-.143-1.637H9z"/>
+                <path fill="#34A853" d="M9 17.5c2.43 0 4.469-.805 5.958-2.184l-2.928-2.273c-.812.544-1.852.866-3.03.866-2.33 0-4.303-1.574-5.008-3.69H.964v2.319A8.998 8.998 0 009 17.5z"/>
+                <path fill="#4A90E2" d="M3.992 10.219A5.396 5.396 0 013.712 9c0-.423.1-.83.28-1.219V5.462H.964A8.998 8.998 0 00.5 9c0 1.45.348 2.82.964 4.038l2.528-1.962z"/>
+                <path fill="#FBBC05" d="M9 4.091c1.321 0 2.507.455 3.441 1.348l2.58-2.58C13.464 1.412 11.427.5 9 .5A8.998 8.998 0 00.964 5.462L3.992 7.78C4.697 5.665 6.67 4.091 9 4.091z"/>
+              </svg>
+            </span>
+            <span class="btn-google-text">Entrar com Google</span>
+          </button>
+          <button id="profileBtn" class="btn btn-soft hidden" type="button">Perfil</button>
+          <button id="logoutBtn" class="btn btn-soft hidden" type="button">Sair</button>
+        </div>
+      </header>
+
+      <section class="board">
+        <div class="column" data-col="todo">
+          <div class="column-header">
+            <div><h3>Pendente</h3><span class="column-count" id="count-todo">0</span></div>
+            <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
+          </div>
+          <div class="cards"></div>
+        </div>
+        <div class="column" data-col="doing">
+          <div class="column-header">
+            <div><h3>Em Progresso</h3><span class="column-count" id="count-doing">0</span></div>
+            <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
+          </div>
+          <div class="cards"></div>
+        </div>
+        <div class="column" data-col="done">
+          <div class="column-header">
+            <div><h3>Concluído</h3><span class="column-count" id="count-done">0</span></div>
+            <button class="btn btn-soft btn-sm add-card-btn">+ Nova</button>
+          </div>
+          <div class="cards"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ── Notification Modal ───────────────────────────────────────── -->
+  <div id="notifOverlay" class="modal-overlay hidden" aria-hidden="true">
+    <div class="modal-card modal-sm notif-modal-card" role="dialog" aria-label="Notificações">
+      <div class="notif-panel-header">
+        <h4>🔔 Notificações</h4>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="notifMarkAllBtn" class="notif-mark-all-btn" type="button">Marcar todas como lidas</button>
+          <button id="notifCloseBtn" class="icon-btn" type="button">✕</button>
+        </div>
+      </div>
+      <div id="notifList" class="notif-list">
+        <div class="notif-empty"><span>🔔</span>Nenhuma notificação por enquanto.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Project context menu ───────────────────────────────────── -->
+  <div id="projectActionsMenu" class="project-actions-menu hidden" aria-hidden="true">
+    <button id="projectActionRenameBtn" class="project-actions-item" type="button">✏️ Renomear projeto</button>
+    <button id="projectActionDeleteBtn" class="project-actions-item danger" type="button">🗑️ Excluir projeto</button>
+  </div>
+
+  <!-- ── Modal Projeto ──────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="projectModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <h3 id="projectModalTitle">Novo Projeto</h3>
+        <button class="icon-btn" id="closeProjectModalBtn" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="field-label" for="projectNameInput">Nome do projeto</label>
+        <input id="projectNameInput" class="input" type="text" placeholder="Ex.: ALEMS125" />
+      </div>
+      <div class="modal-footer">
+        <button id="cancelProjectBtn" class="btn btn-soft" type="button">Cancelar</button>
+        <button id="saveProjectBtn" class="btn btn-primary" type="button">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal edição do card ───────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="cardModalOverlay" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="cardModalTitle">Novo Card</h3>
+        <button class="icon-btn" id="closeCardModalBtn" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label class="field-label" for="cardTitleInput">Título</label>
+          <input id="cardTitleInput" class="input" type="text" placeholder="Digite o título do card" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="cardDescInput">Descrição</label>
+          <textarea id="cardDescInput" class="textarea" placeholder="Digite a descrição"></textarea>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label class="field-label" for="cardOwnerInput">Responsável</label>
+            <input id="cardOwnerInput" class="input" type="text" placeholder="Ex.: Ricardo" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="cardDateInput">Prazo</label>
+            <input id="cardDateInput" class="input" type="date" />
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="cardLabelsInput">Tags</label>
+          <input id="cardLabelsInput" class="input" type="text" placeholder="Ex.: publicar, urgente, revisão" />
+          <small class="helper">Separe por vírgula.</small>
+        </div>
+        <div class="field">
+          <label class="field-label" for="cardParticipantsInput">Participantes</label>
+          <div class="inline-add participant-search-inline">
+            <input id="cardParticipantsInput" class="input" type="text" placeholder="Digite nome ou e-mail do participante" />
+            <button id="cardCheckParticipantBtn" class="btn btn-soft" type="button">Check name</button>
+          </div>
+          <small class="helper">Busque um usuário já cadastrado e adicione-o ao card.</small>
+          <div id="participantSearchResults" class="participant-search-results"></div>
+          <div id="selectedParticipantsList" class="selected-participants-list"></div>
+        </div>
+        <div class="field">
+          <label class="field-label">Checklist</label>
+          <div class="inline-add">
+            <input id="newChecklistItemInput" class="input" type="text" placeholder="Novo item do checklist" />
+            <button id="addChecklistItemBtn" class="btn btn-soft" type="button">Adicionar</button>
+          </div>
+          <div id="editChecklistList" class="edit-list"></div>
+        </div>
+        <div class="field">
+          <label class="field-label">Comentários</label>
+          <div class="inline-add">
+            <input id="newCommentInput" class="input" type="text" placeholder="Novo comentário" />
+            <button id="addCommentBtn" class="btn btn-soft" type="button">Adicionar</button>
+          </div>
+          <div id="editCommentsList" class="edit-list"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="deleteCardBtn" class="btn btn-danger hidden" type="button">Excluir card</button>
+        <div class="footer-right">
+          <button id="cancelCardBtn" class="btn btn-soft" type="button">Cancelar</button>
+          <button id="saveCardBtn" class="btn btn-primary" type="button">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal visualização do card ────────────────────────────── -->
+  <div class="modal-overlay hidden" id="viewCardModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-view">
+      <div class="modal-header">
+        <h3 id="viewCardTitle">Detalhes do Card</h3>
+        <button class="icon-btn" id="closeViewCardModalBtn" type="button">✕</button>
+      </div>
+      <div class="modal-body view-body">
+        <div class="view-section">
+          <div class="view-meta-row">
+            <span id="viewCardOwner" class="meta-chip hidden"></span>
+            <span id="viewCardDate" class="meta-chip hidden"></span>
+            <span id="viewCardColumn" class="meta-chip"></span>
+          </div>
+        </div>
+        <div class="view-section">
+          <h4>Descrição</h4>
+          <p id="viewCardDescription" class="view-text"></p>
+        </div>
+        <div class="view-section">
+          <h4>Labels</h4>
+          <div id="viewCardLabels" class="card-labels"></div>
+        </div>
+        <div class="view-section">
+          <div class="section-inline-header">
+            <h4>Participantes</h4>
+            <span id="viewParticipantsCounter" class="counter-badge">0</span>
+          </div>
+          <div id="viewCardParticipants" class="participants-list"></div>
+        </div>
+        <div class="view-section">
+          <div class="section-inline-header">
+            <h4>Checklist</h4>
+            <span id="viewChecklistCounter" class="counter-badge">0/0</span>
+          </div>
+          <div id="viewChecklistProgressWrap" class="progress-wrap">
+            <div class="progress-bar">
+              <div id="viewChecklistProgress" class="progress-fill"></div>
+            </div>
+          </div>
+          <div id="viewChecklistList" class="view-checklist"></div>
+        </div>
+        <div class="view-section">
+          <div class="section-inline-header">
+            <h4>Comentários</h4>
+            <span id="viewCommentsCounter" class="counter-badge">0</span>
+          </div>
+          <div class="inline-add inline-add-view">
+            <input id="viewNewCommentInput" class="input" type="text" placeholder="Adicionar comentário" />
+            <button id="viewAddCommentBtn" class="btn btn-soft" type="button">Adicionar</button>
+          </div>
+          <div id="viewCommentsList" class="view-comments"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="viewEditCardBtn" class="btn btn-soft" type="button">Editar</button>
+        <button id="closeViewCardFooterBtn" class="btn btn-primary" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Auth modal ─────────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="authModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm auth-modal-card">
+      <div class="modal-header">
+        <h3>Entrar / Cadastro</h3>
+        <button class="icon-btn" id="closeAuthModalBtn" type="button">✕</button>
+      </div>
+      <div class="modal-body auth-modal-body">
+        <div class="auth-brand">
+          <div class="auth-brand-mark">KQ</div>
+          <div>
+            <strong>Acesse sua conta</strong>
+            <p>Login simples com Google. No primeiro acesso, sua conta já é criada automaticamente.</p>
+          </div>
+        </div>
+        <button id="googleLoginBtn" class="btn btn-primary btn-auth-google" type="button">
+          <span class="google-mark" aria-hidden="true">
+            <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#EA4335" d="M9 7.363v3.49h4.85c-.213 1.122-.853 2.072-1.812 2.711l2.928 2.273C16.674 14.266 17.5 11.916 17.5 9c0-.554-.05-1.087-.143-1.637H9z"/>
+              <path fill="#34A853" d="M9 17.5c2.43 0 4.469-.805 5.958-2.184l-2.928-2.273c-.812.544-1.852.866-3.03.866-2.33 0-4.303-1.574-5.008-3.69H.964v2.319A8.998 8.998 0 009 17.5z"/>
+              <path fill="#4A90E2" d="M3.992 10.219A5.396 5.396 0 013.712 9c0-.423.1-.83.28-1.219V5.462H.964A8.998 8.998 0 00.5 9c0 1.45.348 2.82.964 4.038l2.528-1.962z"/>
+              <path fill="#FBBC05" d="M9 4.091c1.321 0 2.507.455 3.441 1.348l2.58-2.58C13.464 1.412 11.427.5 9 .5A8.998 8.998 0 00.964 5.462L3.992 7.78C4.697 5.665 6.67 4.091 9 4.091z"/>
+            </svg>
+          </span>
+          <span class="btn-google-text">Entrar com Google</span>
+        </button>
+        <p id="authConfigHint" class="auth-config-hint hidden">
+          Preencha a Project URL e a Publishable key no arquivo <strong>config.js</strong> para ativar o login.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Profile modal ──────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="profileModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm auth-modal-card">
+      <div class="modal-header">
+        <h3>Perfil</h3>
+        <button class="icon-btn" id="closeProfileModalBtn" type="button">✕</button>
+      </div>
+      <div class="modal-body profile-modal-body">
+        <div class="profile-user-card">
+          <img id="profileAvatar" class="profile-avatar hidden" alt="Avatar do usuário" />
+          <div id="profileAvatarFallback" class="profile-avatar-fallback">KQ</div>
+          <div class="profile-user-copy">
+            <strong id="profileName">Visitante</strong>
+            <span id="profileEmail">Faça login para conectar sua conta.</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="profilePhoneInput">Telefone</label>
+          <input id="profilePhoneInput" class="input" type="text" placeholder="Ex.: (11) 99999-9999" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="profileSectorInput">Setor</label>
+          <input id="profileSectorInput" class="input" type="text" placeholder="Ex.: TI, Marketing, Financeiro" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="profileBioInput">Bio</label>
+          <textarea id="profileBioInput" class="textarea" placeholder="Fale um pouco sobre você"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="saveProfileBtn" class="btn btn-soft" type="button">Salvar perfil</button>
+        <button id="closeProfileFooterBtn" class="btn btn-primary" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── User Bio Modal ─────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="bioModalOverlay" aria-hidden="true">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <h3>Perfil do usuário</h3>
+        <button class="icon-btn" id="closeBioModalBtn" type="button">✕</button>
+      </div>
+      <div class="modal-body bio-modal-body" id="bioModalBody"></div>
+      <div class="modal-footer">
+        <button id="bioChatBtn" class="btn btn-soft bio-chat-btn" type="button">💬 Enviar mensagem</button>
+        <button id="closeBioFooterBtn" class="btn btn-primary" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Theme FAB — always visible, bottom-right ──────────────── -->
+  <button id="themeToggleBtn" class="theme-fab" type="button" aria-label="Alternar tema" title="Claro / Escuro">
+    <span id="themeToggleIcon">🌙</span>
+  </button>
+
+  <!-- ── Floating Chat — only conversation panel, no left sidebar ─ -->
+  <div class="chat-widget" id="chatWidget" style="display:none">
+    <!-- Conversation window (opens above the bubble) -->
+    <div class="chat-window chat-conv-only" id="chatWindow" aria-hidden="true">
+      <div class="chat-main">
+        <div class="chat-main-header" id="chatMainHeader">
+          <span class="chat-no-conv-header">Selecione uma conversa</span>
+          <button class="chat-close-btn" id="chatWindowCloseBtn" type="button" title="Fechar">✕</button>
+        </div>
+        <div id="chatMessages" class="chat-messages">
+          <div class="chat-no-conv-state">
+            <span>💬</span>
+            Selecione um contato no painel esquerdo.
+          </div>
+        </div>
+        <div id="chatInputRow" class="chat-input-row" style="display:none">
+          <textarea id="chatMessageInput" class="input" rows="1" placeholder="Digite uma mensagem..."></textarea>
+          <button id="chatSendBtn" class="btn btn-primary chat-send-btn" type="button">➤</button>
+        </div>
+      </div>
+    </div>
+    <!-- Toggle bubble -->
+    <button class="chat-toggle-btn" id="chatToggleBtn" type="button" aria-label="Mensagens" title="Mensagens">
+      💬
+      <span class="chat-toggle-badge hidden" id="chatToggleBadge"></span>
+    </button>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="config.js"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>

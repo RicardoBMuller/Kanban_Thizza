@@ -1,9 +1,13 @@
 document.addEventListener("DOMContentLoaded", () => {
 // ============================================================
-// CONFIGURAÇÃO — preencha com suas credenciais do Supabase
+// CONFIGURAÇÃO — definida no arquivo config.js
 // ============================================================
-const SUPABASE_URL  = "https://ymskzxssjnvhsqhymzbq.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inltc2t6eHNzam52aHNxaHltemJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwOTAyMzYsImV4cCI6MjA4ODY2NjIzNn0.nsXZ62padaByJNZqJogVyUxW8hqD0oxzl70p2D4sfOs";
+const KANBAN_CONFIG = window.KANBAN_CONFIG || {};
+const SUPABASE_URL = String(KANBAN_CONFIG.SUPABASE_URL || "").trim();
+const SUPABASE_ANON_KEY = String(
+  KANBAN_CONFIG.SUPABASE_PUBLISHABLE_KEY || KANBAN_CONFIG.SUPABASE_ANON_KEY || ""
+).trim();
+const APP_VERSION = "2026.07.15-rebuild-1";
 
 // ============================================================
 // CONSTANTES
@@ -36,6 +40,11 @@ let participantSearchResults = [];
 let suspendCloudSync     = false;
 let cloudSyncTimer       = null;
 let isSyncingCloud       = false;
+let cardModalDirty       = false;
+let cardSaveInProgress   = false;
+let lastHandledUserId    = null;
+let notificationSeenIds  = new Set();
+let chatRuntimeReady     = false;
 
 // Shared cards — cards where the logged user is a participant (not owner)
 let sharedCardsState     = []; // [{card, columnId, projectId, projectName, ownerId}]
@@ -199,8 +208,8 @@ function bindEvents() {
   on(closeProjectModalBtn, "click", closeProjectModal);
   on(cancelProjectBtn, "click", closeProjectModal);
   on(saveProjectBtn, "click", handleSaveProject);
-  on(closeCardModalBtn, "click", closeCardModal);
-  on(cancelCardBtn, "click", closeCardModal);
+  on(closeCardModalBtn, "click", () => closeCardModal(false));
+  on(cancelCardBtn, "click", () => closeCardModal(false));
   on(saveCardBtn, "click", handleSaveCard);
   on(deleteCardBtn, "click", handleDeleteCard);
   on(closeViewCardModalBtn, "click", closeViewCardModal);
@@ -234,6 +243,16 @@ function bindEvents() {
   on(saveProfileBtn, "click", handleSaveProfile);
   on(cardCheckParticipantBtn, "click", handleCheckParticipant);
   on(cardParticipantsInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleCheckParticipant(); }});
+
+  [cardTitleInput, cardDescInput, cardOwnerInput, cardDateInput, cardLabelsInput,
+   cardParticipantsInput, newChecklistItemInput, newCommentInput].forEach(el => {
+    on(el, "input", () => {
+      if (cardModalOverlay && !cardModalOverlay.classList.contains("hidden")) cardModalDirty = true;
+    });
+    on(el, "change", () => {
+      if (cardModalOverlay && !cardModalOverlay.classList.contains("hidden")) cardModalDirty = true;
+    });
+  });
 
   addCardButtons.forEach(button => {
     button.addEventListener("click", () => {
@@ -269,10 +288,17 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") {
-      closeProjectModal(); closeCardModal(); closeViewCardModal();
-      closeAuthModal(); closeProfileModal();
+    if (e.key !== "Escape") return;
+
+    // O modal do card só fecha pelos botões. Isso evita que o navegador,
+    // autocomplete ou seletores nativos descartem o preenchimento por engano.
+    if (cardModalOverlay && !cardModalOverlay.classList.contains("hidden")) {
+      e.preventDefault();
+      return;
     }
+
+    closeProjectModal(); closeViewCardModal();
+    closeAuthModal(); closeProfileModal();
   });
 
   columnEls.forEach(column => {
@@ -301,9 +327,22 @@ function bindEvents() {
 // AUTH
 // ============================================================
 function isSupabaseConfigured() {
-  return SUPABASE_URL && SUPABASE_ANON_KEY
-    && !SUPABASE_URL.includes("COLE_AQUI") && !SUPABASE_URL.includes("SUPABASE_URL")
-    && !SUPABASE_ANON_KEY.includes("COLE_AQUI") && !SUPABASE_ANON_KEY.includes("SUPABASE_KEY");
+  return Boolean(
+    SUPABASE_URL && SUPABASE_ANON_KEY
+    && /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(SUPABASE_URL)
+    && !SUPABASE_URL.includes("COLE_AQUI")
+    && !SUPABASE_ANON_KEY.includes("COLE_AQUI")
+  );
+}
+
+function getAppBaseUrl() {
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+function formatCloudError(error) {
+  if (!error) return "Erro desconhecido.";
+  const parts = [error.message, error.details, error.hint].filter(Boolean);
+  return parts.join(" — ") || String(error);
 }
 
 async function initAuth() {
@@ -314,15 +353,32 @@ async function initAuth() {
     return;
   }
   try {
+    console.info(`[Kanban Quest] versão ${APP_VERSION}`);
     if (!window.supabase || !window.supabase.createClient) {
       updateAuthUI(null); authConfigHint.classList.remove("hidden"); return;
     }
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      },
+      global: {
+        headers: { "x-client-info": `kanban-quest/${APP_VERSION}` }
+      }
+    });
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
     await handleSessionUser(data.session?.user || null, { showWelcome: true });
-    supabase.auth.onAuthStateChange(async (_event, session) => {
-      await handleSessionUser(session?.user || null, { showWelcome: true });
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      const nextUser = session?.user || null;
+      if (event === "TOKEN_REFRESHED") {
+        authUser = nextUser || authUser;
+        updateAuthUI(authUser);
+        return;
+      }
+      if (event === "SIGNED_IN" && nextUser?.id && nextUser.id === lastHandledUserId) return;
+      await handleSessionUser(nextUser, { showWelcome: event === "SIGNED_IN" });
     });
   } catch (error) {
     console.error("Erro ao iniciar Supabase Auth:", error);
@@ -333,15 +389,17 @@ async function initAuth() {
 async function handleSessionUser(sessionUser, { showWelcome = false } = {}) {
   if (!sessionUser) {
     profileRecord = null;
+    lastHandledUserId = null;
+    notificationSeenIds = new Set();
     clearDataForSignedOutUser();
     authUser = null;
     updateAuthUI(null);
     return;
   }
+  lastHandledUserId = sessionUser.id;
   await refreshAuthUser(sessionUser);
   await ensureProfileRecord();
-  await loadCloudData();
-  await loadSharedCards();
+  await Promise.all([loadCloudData(), loadSharedCards(), loadNotificationReads()]);
   updateAuthUI(authUser);
   kqRenderNotifications();
   closeAuthModal();
@@ -421,6 +479,9 @@ async function handleSaveProfile() {
   const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" }).select().single();
   if (error) {
     console.error("Erro ao salvar perfil:", error);
+    alert(`Não foi possível salvar o perfil.
+
+Motivo: ${formatCloudError(error)}`);
     saveProfileBtn.disabled = false; saveProfileBtn.textContent = originalText; return;
   }
   profileRecord = data;
@@ -478,6 +539,7 @@ async function handleLogout() {
       await supabase.auth.signOut();
       authUser = null; profileRecord = null;
       sharedCardsState = []; isViewingSharedProject = false;
+      notificationSeenIds = new Set();
       closeChatWindow();
       showGoodbyeSplash(presentation.fullName, presentation.avatarUrl);
       setTimeout(() => window.location.reload(), 2800);
@@ -685,10 +747,12 @@ async function handleSharedCardSave(cardId) {
       sc.card.comments = updates.comments;
     }
     renderBoard();
-    closeCardModal();
-  } else {
-    alert("Não foi possível salvar o card. Tente novamente.");
+    cardModalDirty = false;
+    closeCardModal(true);
+    return true;
   }
+  alert("Não foi possível salvar o card. Tente novamente.");
+  return false;
 }
 
 // ============================================================
@@ -835,50 +899,37 @@ async function persistProjectCardsOrder(project) {
   await persistProjectToCloud(project);
   const rows = flattenCardsForCloud(project);
   if (!rows.length) return;
-  const lightweightRows = rows.map(({ id, owner_id, project_id, column_key, position }) => ({
-    id, owner_id, project_id, column_key, position
-  }));
-  const { error } = await supabase.from("cards").upsert(lightweightRows, { onConflict: "id" });
+
+  // Envia as linhas completas. Um UPSERT parcial pode falhar nas colunas NOT NULL
+  // antes mesmo de o PostgreSQL resolver o conflito pelo ID.
+  const { error } = await supabase.from("cards").upsert(rows, { onConflict: "id" });
   if (error) throw error;
 }
 
 async function deleteCardFromCloud(cardId) {
   if (!supabase || !authUser || !cardId) return;
-  const { error: partError } = await supabase
-    .from("card_participants")
+  // card_participants é removido automaticamente pelo ON DELETE CASCADE.
+  const { data, error } = await supabase
+    .from("cards")
     .delete()
     .eq("owner_id", authUser.id)
-    .eq("card_id", String(cardId));
-  if (partError) throw partError;
-  const { error } = await supabase.from("cards").delete().eq("owner_id", authUser.id).eq("id", String(cardId));
+    .eq("id", String(cardId))
+    .select("id");
   if (error) throw error;
+  if (!data?.length) throw new Error("O card não foi encontrado ou sua conta não tem permissão para excluí-lo.");
 }
 
 async function deleteProjectFromCloud(projectId) {
   if (!supabase || !authUser || !projectId) return;
-  const { data: cards, error: cardsError } = await supabase
-    .from("cards")
-    .select("id")
+  // Cards e participantes são removidos automaticamente por ON DELETE CASCADE.
+  const { data, error } = await supabase
+    .from("projects")
+    .delete()
     .eq("owner_id", authUser.id)
-    .eq("project_id", String(projectId));
-  if (cardsError) throw cardsError;
-  const cardIds = (cards || []).map(card => card.id);
-  if (cardIds.length) {
-    const { error: partError } = await supabase
-      .from("card_participants")
-      .delete()
-      .eq("owner_id", authUser.id)
-      .in("card_id", cardIds);
-    if (partError) throw partError;
-    const { error: cardsDeleteError } = await supabase
-      .from("cards")
-      .delete()
-      .eq("owner_id", authUser.id)
-      .eq("project_id", String(projectId));
-    if (cardsDeleteError) throw cardsDeleteError;
-  }
-  const { error } = await supabase.from("projects").delete().eq("owner_id", authUser.id).eq("id", String(projectId));
+    .eq("id", String(projectId))
+    .select("id");
   if (error) throw error;
+  if (!data?.length) throw new Error("O projeto não foi encontrado ou sua conta não tem permissão para excluí-lo.");
 }
 
 async function syncAllToCloud() { return; }
@@ -957,7 +1008,7 @@ function updateAuthUI(user) {
   if (notifBtnEl)    notifBtnEl.classList.toggle("hidden", !isLogged);
   if (chatWidgetEl)  chatWidgetEl.style.display = isLogged ? "" : "none";
   if (sidebarChatEl) sidebarChatEl.classList.toggle("hidden", !isLogged);
-  if (!isLogged)     { closeChatWindow(); }
+  if (!isLogged && chatRuntimeReady) { closeChatWindow(); }
 
   updateCreationAccess(); renderProjects(); renderBoard();
 
@@ -985,7 +1036,11 @@ function closeProfileModal() { closeModal(profileModalOverlay); }
 async function handleGoogleLogin() {
   if (!supabase) { authConfigHint.classList.remove("hidden"); return; }
   try {
-    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href.split("#")[0] }});
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: getAppBaseUrl() }
+    });
+    if (error) throw error;
   } catch(error) { console.error("Erro no login com Google:", error); alert("Não foi possível iniciar o login com Google."); }
 }
 
@@ -1060,11 +1115,13 @@ function addParticipantToTemp(p) {
   const exists = tempParticipants.some(item => (item.user_id || item.email || participantDisplayName(item)) === key);
   if (exists) return;
   tempParticipants.push(normalized);
+  cardModalDirty = true;
   renderSelectedParticipants();
 }
 
 function removeParticipantFromTemp(key) {
   tempParticipants = tempParticipants.filter(item => (item.user_id || item.email || participantDisplayName(item)) !== key);
+  cardModalDirty = true;
   renderSelectedParticipants();
 }
 
@@ -1072,22 +1129,30 @@ async function handleCheckParticipant() {
   if (!requireAuth("buscar participantes")) return;
   const term = cardParticipantsInput?.value.trim();
   if (!term) { participantSearchResults = []; renderParticipantSearchResults(); return; }
+  if (term.length < 2) { alert("Digite pelo menos 2 caracteres para buscar."); return; }
   if (!supabase) { alert("Configure o Supabase para buscar participantes."); return; }
-  let data = null;
-  const rpcResult = await supabase.rpc("search_profiles", { search_term: term });
-  if (!rpcResult.error) {
-    data = rpcResult.data;
-  } else {
-    const fallback = await supabase.from("profiles").select("user_id,full_name,email,avatar_url")
-      .or(`full_name.ilike.%${term}%,email.ilike.%${term}%`).limit(8);
-    if (fallback.error) { console.error("Erro ao buscar participantes:", fallback.error); alert("Não foi possível buscar participantes."); return; }
-    data = fallback.data;
+
+  const originalText = cardCheckParticipantBtn.textContent;
+  cardCheckParticipantBtn.disabled = true;
+  cardCheckParticipantBtn.textContent = "Buscando...";
+  try {
+    const { data, error } = await supabase.rpc("search_profiles", { search_term: term });
+    if (error) throw error;
+    participantSearchResults = normalizeParticipants(data || []).filter(p => p.user_id !== authUser.id);
+    if (!participantSearchResults.length) {
+      participantSearchResultsEl.innerHTML = `<div class="participant-search-empty">Nenhum usuário encontrado para "${escapeHtml(term)}". O usuário precisa ter entrado no Kanban Quest pelo menos uma vez.</div>`;
+      return;
+    }
+    renderParticipantSearchResults();
+  } catch (error) {
+    console.error("Erro ao buscar participantes:", error);
+    alert(`Não foi possível buscar participantes.
+
+Motivo: ${formatCloudError(error)}`);
+  } finally {
+    cardCheckParticipantBtn.disabled = false;
+    cardCheckParticipantBtn.textContent = originalText;
   }
-  participantSearchResults = normalizeParticipants(data || []).filter(p => p.user_id !== authUser.id);
-  if (!participantSearchResults.length) {
-    participantSearchResultsEl.innerHTML = `<div class="participant-search-empty">Nenhum usuário encontrado para "${escapeHtml(term)}".</div>`; return;
-  }
-  renderParticipantSearchResults();
 }
 
 // ============================================================
@@ -1354,28 +1419,47 @@ async function handleSaveProject() {
   if (!requireAuth("salvar projetos")) return;
   const name = projectNameInput.value.trim();
   if (!name) { alert("Digite um nome para o projeto."); projectNameInput.focus(); return; }
-  if (projectModalMode === "create") {
-    const exists = state.projects.some(p => p.name.toLowerCase() === name.toLowerCase());
-    if (exists) { alert("Já existe um projeto com esse nome."); return; }
-    const newProject = createProject(name);
-    state.projects.push(newProject); currentProjectId = newProject.id; isViewingSharedProject = false;
-  } else {
-    const currentProject = getCurrentProject();
-    if (!currentProject) return;
-    const exists = state.projects.some(p => p.id !== currentProject.id && p.name.toLowerCase() === name.toLowerCase());
-    if (exists) { alert("Já existe outro projeto com esse nome."); return; }
-    currentProject.name = name;
-  }
+
+  const projectsSnapshot = clone(state.projects);
+  const currentProjectSnapshot = currentProjectId;
+  const originalText = saveProjectBtn.textContent;
+  saveProjectBtn.disabled = true;
+  saveProjectBtn.textContent = "Salvando...";
+
   try {
+    let projectToPersist = null;
     if (projectModalMode === "create") {
-      await persistProjectToCloud(state.projects[state.projects.length - 1]);
+      const exists = state.projects.some(p => p.name.toLowerCase() === name.toLowerCase());
+      if (exists) { alert("Já existe um projeto com esse nome."); return; }
+      const newProject = createProject(name);
+      state.projects.push(newProject);
+      currentProjectId = newProject.id;
+      isViewingSharedProject = false;
+      projectToPersist = newProject;
     } else {
-      await persistProjectToCloud(getCurrentProject());
+      const currentProject = getCurrentProject();
+      if (!currentProject) return;
+      const exists = state.projects.some(p => p.id !== currentProject.id && p.name.toLowerCase() === name.toLowerCase());
+      if (exists) { alert("Já existe outro projeto com esse nome."); return; }
+      currentProject.name = name;
+      projectToPersist = currentProject;
     }
-    saveState(); renderProjects(); renderBoard(); closeProjectModal();
+
+    await persistProjectToCloud(projectToPersist);
+    saveState();
+    renderProjects();
+    renderBoard();
+    closeProjectModal();
   } catch (error) {
+    state.projects = projectsSnapshot;
+    currentProjectId = currentProjectSnapshot;
     console.error("Erro ao salvar projeto:", error);
-    alert("Não foi possível salvar o projeto online.");
+    alert(`Não foi possível salvar o projeto online.
+
+Motivo: ${formatCloudError(error)}`);
+  } finally {
+    saveProjectBtn.disabled = false;
+    saveProjectBtn.textContent = originalText;
   }
 }
 
@@ -1385,14 +1469,20 @@ async function handleDeleteProject() {
   if (!project) return;
   const ok = confirm(`Deseja excluir o projeto "${project.name}"?`);
   if (!ok) return;
-  state.projects = state.projects.filter(p => p.id !== project.id);
-  currentProjectId = state.projects[0]?.id || null;
+  const projectsSnapshot = clone(state.projects);
+  const currentProjectSnapshot = currentProjectId;
   try {
     await deleteProjectFromCloud(project.id);
+    state.projects = state.projects.filter(p => p.id !== project.id);
+    currentProjectId = state.projects[0]?.id || null;
     saveState(); renderProjects(); renderBoard();
   } catch (error) {
+    state.projects = projectsSnapshot;
+    currentProjectId = currentProjectSnapshot;
     console.error("Erro ao excluir projeto:", error);
-    alert("Não foi possível excluir o projeto online.");
+    alert(`Não foi possível excluir o projeto online.
+
+Motivo: ${formatCloudError(error)}`);
   }
 }
 
@@ -1466,6 +1556,7 @@ function openCardModal(mode, columnId, cardId = null) {
   renderEditChecklist();
   renderEditComments();
   openModal(cardModalOverlay);
+  cardModalDirty = false;
   setTimeout(() => { cardTitleInput.focus(); cardTitleInput.select(); }, 90);
 }
 
@@ -1498,22 +1589,39 @@ function injectParticipantNotice(isParticipant) {
   modalBody.insertBefore(notice, modalBody.firstChild);
 }
 
-function closeCardModal() {
+function closeCardModal(force = false) {
+  if (!force && cardModalDirty && !cardModalOverlay.classList.contains("hidden")) {
+    const discard = confirm("Existem alterações ainda não salvas. Deseja fechar e descartar o preenchimento?");
+    if (!discard) return;
+  }
   participantSearchResults = [];
+  tempParticipants = [];
   renderParticipantSearchResults();
+  cardModalDirty = false;
   closeModal(cardModalOverlay);
 }
 
 async function handleSaveCard() {
   if (!requireAuth("salvar cards")) return;
+  if (cardSaveInProgress) return;
 
   // Shared card save
   if (currentEditingCardId && isSharedCard(currentEditingCardId)) {
-    await handleSharedCardSave(currentEditingCardId);
+    cardSaveInProgress = true;
+    saveCardBtn.disabled = true;
+    const originalText = saveCardBtn.textContent;
+    saveCardBtn.textContent = "Salvando...";
+    try {
+      const saved = await handleSharedCardSave(currentEditingCardId);
+      if (saved) cardModalDirty = false;
+    } finally {
+      cardSaveInProgress = false;
+      saveCardBtn.disabled = false;
+      saveCardBtn.textContent = originalText;
+    }
     return;
   }
 
-  // Owner save
   const title = cardTitleInput.value.trim();
   if (!title) { alert("Digite um título para o card."); cardTitleInput.focus(); return; }
   const project = getCurrentProject();
@@ -1531,54 +1639,82 @@ async function handleSaveCard() {
     createdAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.createdAt || new Date().toISOString()) : new Date().toISOString()
   };
 
-  if (currentEditingCardId) {
-    const found = findCard(currentEditingCardId);
-    if (!found) return;
-    project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== currentEditingCardId);
-    project.columns[currentTargetColumn].push(cardData);
-  } else {
-    project.columns[currentTargetColumn].push(cardData);
-  }
+  const columnsSnapshot = clone(project.columns);
+  cardSaveInProgress = true;
+  saveCardBtn.disabled = true;
+  const originalText = saveCardBtn.textContent;
+  saveCardBtn.textContent = "Salvando...";
 
   try {
+    if (currentEditingCardId) {
+      const found = findCard(currentEditingCardId);
+      if (!found) throw new Error("O card não foi encontrado no projeto atual.");
+      project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== currentEditingCardId);
+      project.columns[currentTargetColumn].push(cardData);
+    } else {
+      project.columns[currentTargetColumn].push(cardData);
+    }
+
     await persistProjectToCloud(project);
     const targetPosition = project.columns[currentTargetColumn].findIndex(card => card.id === cardData.id);
     await persistCardToCloud(cardData, project.id, currentTargetColumn, targetPosition);
     await persistProjectCardsOrder(project);
-    saveState(); renderBoard(); closeCardModal();
+
+    saveState();
+    renderBoard();
+    cardModalDirty = false;
+    closeCardModal(true);
   } catch (error) {
+    project.columns = columnsSnapshot;
     console.error("Erro ao salvar card:", error);
-    alert("Não foi possível salvar o card online.");
+    alert(`Não foi possível salvar o card online.
+
+Motivo: ${formatCloudError(error)}`);
+  } finally {
+    cardSaveInProgress = false;
+    saveCardBtn.disabled = false;
+    saveCardBtn.textContent = originalText;
   }
 }
 
 async function handleDeleteCard() {
   if (!requireAuth("excluir cards")) return;
-  if (!currentEditingCardId) return;
+  if (!currentEditingCardId || cardSaveInProgress) return;
   if (isSharedCard(currentEditingCardId)) { alert("Participantes não podem excluir cards."); return; }
 
-  const ok = confirm("Deseja excluir este card?");
+  const ok = confirm("Deseja excluir este card? Esta ação não poderá ser desfeita.");
   if (!ok) return;
 
   const project = getCurrentProject();
   if (!project) return;
-
   const found = findCard(currentEditingCardId);
   if (!found) return;
 
-  const previousColumnCards = [...project.columns[found.columnId]];
-  project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== currentEditingCardId);
+  const columnsSnapshot = clone(project.columns);
+  const deletingId = currentEditingCardId;
+  cardSaveInProgress = true;
+  deleteCardBtn.disabled = true;
+  const originalText = deleteCardBtn.textContent;
+  deleteCardBtn.textContent = "Excluindo...";
 
   try {
-    await deleteCardFromCloud(currentEditingCardId);
-    await persistProjectCardsOrder(project);
+    await deleteCardFromCloud(deletingId);
+    project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== deletingId);
+    // Não é necessário renumerar as posições: lacunas não afetam a ordenação.
     saveState();
     renderBoard();
-    closeCardModal();
+    cardModalDirty = false;
+    closeCardModal(true);
   } catch (error) {
-    project.columns[found.columnId] = previousColumnCards;
+    project.columns = columnsSnapshot;
     console.error("Erro ao excluir card:", error);
-    alert("Não foi possível excluir o card online.");
+    alert(`Não foi possível excluir o card online.
+
+Motivo: ${formatCloudError(error)}`);
+  } finally {
+    cardSaveInProgress = false;
+    deleteCardBtn.disabled = false;
+    deleteCardBtn.textContent = originalText;
   }
 }
 
@@ -1586,6 +1722,7 @@ function handleAddChecklistItem() {
   const text = newChecklistItemInput.value.trim();
   if (!text) return;
   tempChecklist.push({ id: uid(), text, done: false });
+  cardModalDirty = true;
   newChecklistItemInput.value = "";
   renderEditChecklist();
 }
@@ -1594,6 +1731,7 @@ function handleAddComment() {
   const text = newCommentInput.value.trim();
   if (!text) return;
   tempComments.push({ id: uid(), text, author: authUser ? getUserPresentation(authUser).fullName : "", createdAt: new Date().toISOString() });
+  cardModalDirty = true;
   newCommentInput.value = "";
   renderEditComments();
 }
@@ -1610,8 +1748,8 @@ function renderEditChecklist() {
         <span>${escapeHtml(item.text)}</span>
       </div>
       <button class="btn btn-soft btn-sm" type="button">Remover</button>`;
-    row.querySelector("input").addEventListener("change", e => { item.done = e.target.checked; });
-    row.querySelector("button").addEventListener("click", () => { tempChecklist = tempChecklist.filter(c => c.id !== item.id); renderEditChecklist(); });
+    row.querySelector("input").addEventListener("change", e => { item.done = e.target.checked; cardModalDirty = true; });
+    row.querySelector("button").addEventListener("click", () => { tempChecklist = tempChecklist.filter(c => c.id !== item.id); cardModalDirty = true; renderEditChecklist(); });
     editChecklistList.appendChild(row);
   });
 }
@@ -1627,7 +1765,7 @@ function renderEditComments() {
         <span>${escapeHtml(comment.text)}${comment.author ? ` — ${escapeHtml(comment.author)}` : ""}</span>
       </div>
       <button class="btn btn-soft btn-sm" type="button">Remover</button>`;
-    row.querySelector("button").addEventListener("click", () => { tempComments = tempComments.filter(c => c.id !== comment.id); renderEditComments(); });
+    row.querySelector("button").addEventListener("click", () => { tempComments = tempComments.filter(c => c.id !== comment.id); cardModalDirty = true; renderEditComments(); });
     editCommentsList.appendChild(row);
   });
 }
@@ -2090,12 +2228,41 @@ function kqCloseNotif() {
   kqNotifOpen = false;
 }
 
-function kqGetSeen()    { try { return new Set(JSON.parse(safeGetItem(NOTIF_SEEN_KEY)||"[]")); } catch { return new Set(); } }
-function kqSaveSeen(s)  { safeSetItem(NOTIF_SEEN_KEY, JSON.stringify([...s])); }
+async function loadNotificationReads() {
+  if (!supabase || !authUser) { notificationSeenIds = new Set(); return; }
+  const { data, error } = await supabase
+    .from("notification_reads")
+    .select("notification_id")
+    .eq("user_id", authUser.id);
+  if (error) {
+    console.warn("Não foi possível carregar notificações lidas:", error);
+    notificationSeenIds = new Set();
+    return;
+  }
+  notificationSeenIds = new Set((data || []).map(row => row.notification_id));
+}
+
+function kqGetSeen() { return new Set(notificationSeenIds); }
+
+async function kqSaveSeen(seenSet) {
+  notificationSeenIds = new Set(seenSet);
+  if (!supabase || !authUser || !notificationSeenIds.size) return;
+  const rows = [...notificationSeenIds].map(notificationId => ({
+    user_id: authUser.id,
+    notification_id: notificationId
+  }));
+  const { error } = await supabase
+    .from("notification_reads")
+    .upsert(rows, { onConflict: "user_id,notification_id" });
+  if (error) console.warn("Não foi possível salvar notificações lidas:", error);
+}
+
 function kqMarkAllNotifRead() {
   const s = kqGetSeen();
   kqNotifItems.forEach(n => s.add(n.id));
-  kqSaveSeen(s); kqRenderNotifications(); kqCloseNotif();
+  void kqSaveSeen(s);
+  kqRenderNotifications();
+  kqCloseNotif();
 }
 
 function kqBuildNotifications() {
@@ -2146,7 +2313,7 @@ function kqRenderNotifications() {
       <div class="notif-item-body"><strong>${escapeHtml(n.title)}</strong><span>${escapeHtml(n.body)}</span></div>
       <span class="notif-item-time">${kqTimeAgo(n.time)}</span>`;
     row.addEventListener("click", () => {
-      seen.add(n.id); kqSaveSeen(seen); kqCloseNotif(); kqRenderNotifications();
+      seen.add(n.id); void kqSaveSeen(seen); kqCloseNotif(); kqRenderNotifications();
       if (n.cardId) setTimeout(() => openViewCardModal(n.cardId), 80);
     });
     kqNotifList.appendChild(row);
@@ -2241,6 +2408,7 @@ const kqSearchWrap  = document.getElementById("chatSearchWrap");
 const kqMainHeader  = document.getElementById("chatMainHeader");
 const kqSidebarBadge = document.getElementById("sidebarUnreadBadge");
 const themeToggleBtn = document.getElementById("themeToggleBtn");
+chatRuntimeReady = true;
 
 // Dropdown is a child of kqSearchWrap (absolute-positioned, no overflow issues)
 let kqDropdown = null;
