@@ -476,8 +476,20 @@
     </button>
   </div>
 
+  <script>
+    // Proteção de inicialização: mesmo que algum recurso externo falhe, a tela
+    // de apresentação nunca ficará bloqueando o Kanban indefinidamente.
+    window.setTimeout(function () {
+      var splash = document.getElementById("introSplash");
+      if (!splash) return;
+      document.body.classList.add("is-app-ready");
+      splash.style.pointerEvents = "none";
+      splash.style.opacity = "0";
+      window.setTimeout(function () { splash.remove(); }, 700);
+    }, 4500);
+  </script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="config.js"></script>
-  <script defer src="app.js?v=20260716-gray-rich-text-1"></script>
+  <script defer src="app.js?v=20260716-gray-rich-text-2-splash-fix"></script>
 </body>
 </html>

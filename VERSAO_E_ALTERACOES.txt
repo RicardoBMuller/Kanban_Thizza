@@ -1,3 +1,8 @@
+CORREÇÃO 2026-07-16 — TELA DE APRESENTAÇÃO
+- Corrigida a ordem de inicialização do editor de texto rico.
+- Adicionado mecanismo de segurança para remover o splash mesmo se ocorrer falha externa.
+- Nenhuma alteração no banco de dados é necessária.
+
 KANBAN QUEST — VERSÃO CINZA + EDITOR DE TEXTO RICO
 Data: 16/07/2026
 

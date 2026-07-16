@@ -7,7 +7,7 @@ const SUPABASE_URL = String(KANBAN_CONFIG.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(
   KANBAN_CONFIG.SUPABASE_PUBLISHABLE_KEY || KANBAN_CONFIG.SUPABASE_ANON_KEY || ""
 ).trim();
-const APP_VERSION = "2026.07.16-fcc-gray-rich-text-1";
+const APP_VERSION = "2026.07.16-fcc-gray-rich-text-2-splash-fix";
 
 // ============================================================
 // CONSTANTES
@@ -184,7 +184,9 @@ let statusConfirmResolver    = null;
 const addCardButtons = document.querySelectorAll(".add-card-btn");
 const columnEls      = document.querySelectorAll(".column");
 
-init();
+// A inicialização é disparada somente no final deste arquivo. Isso garante que
+// constantes e estruturas do editor de texto rico já estejam disponíveis antes
+// de init() executar, evitando que a tela de apresentação fique presa.
 
 // ============================================================
 // INIT
@@ -3816,5 +3818,18 @@ function kqStartPoll() {
 function kqStopPoll()  { if (kqPollTimer) { clearInterval(kqPollTimer); kqPollTimer = null; } }
 function stopChatPoll(){ kqStopPoll(); }
 
+
+// Dispara a aplicação apenas depois que todo o escopo acima foi inicializado.
+// Na versão anterior, init() era chamado antes das constantes do editor rico,
+// causando ReferenceError e mantendo o splash visível indefinidamente.
+init().catch(error => {
+  console.error("[Kanban Quest] Falha durante a inicialização:", error);
+  document.body.classList.add("is-app-ready");
+  const splash = document.getElementById("introSplash");
+  if (splash) {
+    splash.classList.add("is-hidden");
+    window.setTimeout(() => splash.remove(), 700);
+  }
+});
 
 }); // end DOMContentLoaded
