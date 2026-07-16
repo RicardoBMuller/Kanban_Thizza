@@ -1,13 +1,11 @@
 ANTES DE PUBLICAR NO GITHUB PAGES
 
-1. No Supabase, execute supabase/05_ADICIONAR_AVATARES_E_ANEXOS.sql.
-2. Depois, execute supabase/02_VERIFICAR_INSTALACAO.sql.
-3. Preserve o config.js que já funciona no seu GitHub Pages.
-4. Extraia o pacote e substitua o config.js de exemplo pelo seu config.js atual.
-5. Envie index.html, styles.css, app.js, config.js e .nojekyll para a raiz do repositório.
-6. Após a publicação, abra o site e pressione Ctrl + F5.
+1. Preserve o config.js que já funciona no seu GitHub Pages.
+2. Extraia o pacote e substitua o config.js de exemplo pelo seu config.js atual.
+3. Envie index.html, styles.css, app.js, config.js e .nojekyll para a raiz do repositório.
+4. Após a publicação, abra o site e pressione Ctrl + F5.
 
-IMPORTANTE
-- Não execute 01_RECRIAR_BANCO.sql no banco atual, pois ele é destinado a instalação nova.
-- O bucket card-attachments é privado.
-- Limite de 15 MB por arquivo.
+BANCO DE DADOS
+- Não há novo SQL para esta atualização.
+- Caso você já tenha executado 05_ADICIONAR_AVATARES_E_ANEXOS.sql, não precisa executar nada no Supabase.
+- Não execute 01_RECRIAR_BANCO.sql no banco atual, pois ele é destinado a uma instalação nova.

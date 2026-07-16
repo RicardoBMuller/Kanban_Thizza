@@ -7,7 +7,7 @@ const SUPABASE_URL = String(KANBAN_CONFIG.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(
   KANBAN_CONFIG.SUPABASE_PUBLISHABLE_KEY || KANBAN_CONFIG.SUPABASE_ANON_KEY || ""
 ).trim();
-const APP_VERSION = "2026.07.16-fcc-avatars-attachments-1";
+const APP_VERSION = "2026.07.16-fcc-owner-avatar-reopened-neutral-2";
 
 // ============================================================
 // CONSTANTES
@@ -645,6 +645,15 @@ async function loadCloudData() {
     const card = {
       id: row.id, title: row.title || "Sem título", description: row.description || "",
       owner: row.owner || "", date: row.due_date || "",
+      ownerId: row.owner_id || authUser.id,
+      ownerProfile: {
+        user_id: authUser.id,
+        full_name: getUserPresentation(authUser).fullName,
+        email: getUserPresentation(authUser).email,
+        avatar_url: getUserPresentation(authUser).avatarUrl,
+        added_at: row.created_at,
+        is_owner: true
+      },
       labels: Array.isArray(row.labels) ? row.labels : [],
       participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : [], row.created_at),
       checklist: normalizeChecklistItems(Array.isArray(row.checklist) ? row.checklist : [], row.created_at),
@@ -708,10 +717,32 @@ async function loadSharedCards() {
     (projects || []).forEach(p => { projectNames[p.id] = { name: p.name, ownerId: p.owner_id }; });
   }
 
+  // Hidrata também o avatar do dono, para ele sempre aparecer no card compartilhado.
+  const ownerIds = [...new Set((cards || []).map(c => c.owner_id).filter(Boolean))];
+  const ownerProfiles = {};
+  if (ownerIds.length) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("user_id,full_name,email,avatar_url")
+      .in("user_id", ownerIds);
+    if (profilesError) console.warn("Não foi possível carregar todos os avatares dos responsáveis:", profilesError);
+    (profiles || []).forEach(profile => { ownerProfiles[profile.user_id] = profile; });
+  }
+
   sharedCardsState = (cards || []).map(row => ({
     card: {
       id: row.id, title: row.title || "Sem título", description: row.description || "",
       owner: row.owner || "", date: row.due_date || "",
+      ownerId: row.owner_id,
+      ownerProfile: {
+        ...(ownerProfiles[row.owner_id] || {}),
+        user_id: row.owner_id,
+        full_name: ownerProfiles[row.owner_id]?.full_name || row.owner || "Responsável pelo card",
+        email: ownerProfiles[row.owner_id]?.email || "",
+        avatar_url: ownerProfiles[row.owner_id]?.avatar_url || "",
+        added_at: row.created_at,
+        is_owner: true
+      },
       labels: Array.isArray(row.labels) ? row.labels : [],
       participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : [], row.created_at),
       checklist: normalizeChecklistItems(Array.isArray(row.checklist) ? row.checklist : [], row.created_at),
@@ -1161,17 +1192,52 @@ function participantEmail(p)        { if (!p || typeof p === "string") return ""
 
 function normalizeParticipant(p, fallbackCreatedAt = null) {
   if (!p) return null;
-  if (typeof p === "string") return { user_id: null, full_name: p, email: "", avatar_url: "", added_at: fallbackCreatedAt || new Date().toISOString() };
+  if (typeof p === "string") return { user_id: null, full_name: p, email: "", avatar_url: "", added_at: fallbackCreatedAt || new Date().toISOString(), is_owner: false };
   return {
     user_id: p.user_id || p.id || null,
     full_name: p.full_name || p.name || p.email || "Participante",
     email: p.email || "",
     avatar_url: p.avatar_url || p.picture || "",
-    added_at: p.added_at || p.addedAt || p.created_at || p.createdAt || fallbackCreatedAt || new Date().toISOString()
+    added_at: p.added_at || p.addedAt || p.created_at || p.createdAt || fallbackCreatedAt || new Date().toISOString(),
+    is_owner: Boolean(p.is_owner || p.isOwner)
   };
 }
 function normalizeParticipants(participants, fallbackCreatedAt = null) {
   return (Array.isArray(participants) ? participants : []).map(p => normalizeParticipant(p, fallbackCreatedAt)).filter(Boolean);
+}
+
+function getCardOwnerProfile(card) {
+  if (!card) return null;
+  const explicit = card.ownerProfile || {};
+  const isCurrentUserOwner = Boolean(authUser?.id && card.ownerId && String(authUser.id) === String(card.ownerId));
+  const currentPresentation = isCurrentUserOwner ? getUserPresentation(authUser) : null;
+  return normalizeParticipant({
+    user_id: explicit.user_id || card.ownerId || (isCurrentUserOwner ? authUser?.id : null),
+    full_name: explicit.full_name || currentPresentation?.fullName || card.owner || "Responsável pelo card",
+    email: explicit.email || currentPresentation?.email || "",
+    avatar_url: explicit.avatar_url || currentPresentation?.avatarUrl || "",
+    added_at: card.createdAt || explicit.added_at || new Date().toISOString(),
+    is_owner: true
+  }, card.createdAt);
+}
+
+function getCardPeopleForDisplay(card) {
+  const owner = getCardOwnerProfile(card);
+  const participants = normalizeParticipants(card?.participants || [], card?.createdAt);
+  const combined = owner ? [owner, ...participants] : participants;
+  const seen = new Set();
+  return combined.filter(person => {
+    const normalized = normalizeParticipant(person, card?.createdAt);
+    if (!normalized) return false;
+    const key = normalized.user_id
+      ? `id:${String(normalized.user_id)}`
+      : normalized.email
+        ? `email:${String(normalized.email).trim().toLowerCase()}`
+        : `name:${participantDisplayName(normalized).trim().toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 function normalizeChecklistItems(items, fallbackCreatedAt = null) {
   return (Array.isArray(items) ? items : []).map(item => ({
@@ -1212,18 +1278,20 @@ function participantAvatarHtml(participant, className = "participant-avatar") {
   const normalized = normalizeParticipant(participant);
   const name = participantDisplayName(normalized) || "Participante";
   const initials = getInitials(name);
+  const ownerClass = normalized?.is_owner ? " is-owner-avatar" : "";
+  const roleTitle = normalized?.is_owner ? `${name} · Responsável pelo card` : name;
   if (normalized?.avatar_url) {
-    return `<span class="${className}" title="${escapeHtml(name)}"><span class="participant-avatar-initials" aria-hidden="true">${escapeHtml(initials)}</span><img src="${escapeHtml(normalized.avatar_url)}" alt="Avatar de ${escapeHtml(name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></span>`;
+    return `<span class="${className}${ownerClass}" title="${escapeHtml(roleTitle)}"><span class="participant-avatar-initials" aria-hidden="true">${escapeHtml(initials)}</span><img src="${escapeHtml(normalized.avatar_url)}" alt="Avatar de ${escapeHtml(name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></span>`;
   }
-  return `<span class="${className} participant-avatar-fallback" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${escapeHtml(initials)}</span>`;
+  return `<span class="${className}${ownerClass} participant-avatar-fallback" title="${escapeHtml(roleTitle)}" aria-label="${escapeHtml(roleTitle)}">${escapeHtml(initials)}</span>`;
 }
 
-function renderParticipantAvatarStack(participants, maxVisible = 5) {
-  const normalized = normalizeParticipants(participants || []);
+function renderParticipantAvatarStack(people, maxVisible = 5) {
+  const normalized = normalizeParticipants(people || []);
   if (!normalized.length) return "";
   const visible = normalized.slice(0, maxVisible);
   const remaining = normalized.length - visible.length;
-  return `<div class="card-avatar-stack" aria-label="${normalized.length} participante(s)">${visible.map(p => participantAvatarHtml(p, "card-participant-avatar")).join("")}${remaining > 0 ? `<span class="card-participant-avatar participant-avatar-more" title="Mais ${remaining} participante(s)">+${remaining}</span>` : ""}</div>`;
+  return `<div class="card-avatar-stack" aria-label="${normalized.length} pessoa(s) no card">${visible.map(p => participantAvatarHtml(p, "card-participant-avatar")).join("")}${remaining > 0 ? `<span class="card-participant-avatar participant-avatar-more" title="Mais ${remaining} pessoa(s)">+${remaining}</span>` : ""}</div>`;
 }
 
 function formatFileSize(bytes) {
@@ -1852,8 +1920,8 @@ function renderColumn(columnId, cards, isShared = false) {
 
     const commentsCount = (card.comments || []).length;
     const attachmentsCount = normalizeAttachments(card.attachments || []).length;
-    const participants  = normalizeParticipants(card.participants || []);
-    const participantsHtml = renderParticipantAvatarStack(participants, 5);
+    const cardPeople = getCardPeopleForDisplay(card);
+    const participantsHtml = renderParticipantAvatarStack(cardPeople, 5);
 
     const sharedBadge = isShared ? `<span class="card-shared-badge">🤝 Compartilhado</span>` : "";
     const completedBadge = isCompleted ? `<span class="card-status-badge completed">🔒 Concluído e travado</span>` : "";
@@ -2196,6 +2264,15 @@ async function handleSaveCard() {
     id: currentEditingCardId || uid(), title,
     description: cardDescInput.value.trim(),
     owner: cardOwnerInput.value.trim() || (authUser ? getUserPresentation(authUser).fullName : ""),
+    ownerId: previousCard?.ownerId || authUser?.id || null,
+    ownerProfile: previousCard?.ownerProfile || (authUser ? {
+      user_id: authUser.id,
+      full_name: getUserPresentation(authUser).fullName,
+      email: getUserPresentation(authUser).email,
+      avatar_url: getUserPresentation(authUser).avatarUrl,
+      added_at: previousCard?.createdAt || new Date().toISOString(),
+      is_owner: true
+    } : null),
     date: cardDateInput.value,
     labels: cardLabelsInput.value.split(",").map(l => l.trim()).filter(Boolean),
     participants: normalizeParticipants(clone(tempParticipants)),
@@ -2409,28 +2486,32 @@ function openViewCardModal(cardId) {
     card.labels.forEach(l => { const s = document.createElement("span"); s.className = "label"; s.textContent = l; viewCardLabels.appendChild(s); });
   } else { viewCardLabels.innerHTML = `<div class="empty-state">Nenhuma label.</div>`; }
 
-  const participants = normalizeParticipants(card.participants || []);
-  viewParticipantsCounter.textContent = `${participants.length}`;
+  const cardPeople = getCardPeopleForDisplay(card);
+  viewParticipantsCounter.textContent = `${cardPeople.length}`;
   viewCardParticipants.innerHTML = "";
-  if (participants.length) {
-    participants.forEach(p => {
+  if (cardPeople.length) {
+    cardPeople.forEach(p => {
       const participant = document.createElement(p.user_id && supabase ? "button" : "div");
       if (participant.tagName === "BUTTON") participant.type = "button";
-      participant.className = "view-participant-item";
+      participant.className = `view-participant-item${p.is_owner ? " is-card-owner" : ""}`;
+      const personEmail = participantEmail(p);
+      const personMeta = p.is_owner
+        ? `${personEmail ? `${escapeHtml(personEmail)} · ` : ""}Responsável pelo card · Incluído em ${escapeHtml(formatDateTime(card.createdAt))}`
+        : `${escapeHtml(personEmail || "Participante")} · Incluído em ${escapeHtml(formatDateTime(p.added_at || card.createdAt))}`;
       participant.innerHTML = `
         ${participantAvatarHtml(p, "view-participant-avatar")}
         <span class="view-participant-copy">
-          <strong>${escapeHtml(participantDisplayName(p))}</strong>
-          <small>${escapeHtml(participantEmail(p) || "Participante")} · Incluído em ${escapeHtml(formatDateTime(p.added_at || card.createdAt))}</small>
+          <strong>${escapeHtml(participantDisplayName(p))}${p.is_owner ? `<span class="owner-role-badge">Responsável</span>` : ""}</strong>
+          <small>${personMeta}</small>
         </span>`;
       if (p.user_id && supabase) {
         participant.classList.add("is-clickable-bio");
-        participant.title = "Ver perfil";
+        participant.title = p.is_owner ? "Ver perfil do responsável" : "Ver perfil";
         participant.addEventListener("click", (e) => { e.stopPropagation(); kqOpenBio(p.user_id); });
       }
       viewCardParticipants.appendChild(participant);
     });
-  } else { viewCardParticipants.innerHTML = `<div class="empty-state">Nenhum participante.</div>`; }
+  } else { viewCardParticipants.innerHTML = `<div class="empty-state">Responsável não identificado.</div>`; }
 
   renderViewAttachments(card, columnId);
 
@@ -2668,7 +2749,7 @@ function showStatusConfirmation({ mode, cardTitle }) {
     : `Você realmente deseja reabrir “${cardTitle}”?`;
   statusConfirmWarning.innerHTML = completing
     ? `<strong>Depois da conclusão, o card ficará travado.</strong><span>Não será possível editar, comentar, marcar checklist, mover ou excluir até que ele seja reaberto. Todos os participantes receberão uma notificação.</span>`
-    : `<strong>O card voltará para Em Progresso.</strong><span>Ele receberá a marca “REABERTO”, ficará destacado em vermelho/salmão e todos os participantes receberão uma notificação.</span>`;
+    : `<strong>O card voltará para Em Progresso.</strong><span>Ele receberá a marca d’água “REABERTO” e uma faixa vermelha de identificação. Todos os participantes receberão uma notificação.</span>`;
   statusConfirmAcceptBtn.textContent = completing ? "Sim, concluir" : "Sim, reabrir";
   statusConfirmAcceptBtn.className = completing ? "btn btn-primary" : "btn btn-reopen";
   openModal(statusConfirmOverlay);

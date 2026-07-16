@@ -1,66 +1,54 @@
-# Kanban Quest — Avatares e Anexos Online
+# Kanban Quest — Owner sempre visível e card reaberto neutro
 
-Esta versão mantém o visual escuro original aprovado e acrescenta:
+Esta versão mantém o visual escuro original aprovado e incorpora os ajustes solicitados.
 
-- avatares dos participantes na parte externa dos cards, em formato empilhado como no Trello;
-- avatares, nome, e-mail e data de inclusão na área interna do card;
-- documentos anexados e armazenados online no Supabase Storage;
-- visualização e download dos anexos por link temporário e seguro;
-- envio de anexos pelo dono e pelos participantes enquanto o card estiver aberto;
-- card concluído continua travado e permite apenas visualizar/baixar anexos;
-- cards normais ficaram ligeiramente mais claros que os cards reabertos.
+## Alterações
 
-## 1. Atualize o Supabase antes de publicar
+- O avatar do responsável pelo card aparece sempre, mesmo quando ele é a única pessoa vinculada.
+- O responsável aparece primeiro na pilha de avatares fora do card.
+- Dentro do card, o responsável é exibido com avatar, nome, e-mail e selo **Responsável**.
+- Em cards compartilhados, o perfil e o avatar do dono são carregados online pela tabela `profiles` do Supabase.
+- Os números das colunas **Pendente**, **Em Progresso** e **Concluído** usam texto branco sobre a bolinha vinho.
+- Cards reabertos têm a mesma cor dos cards normais.
+- A identificação de reabertura continua visível por meio da faixa vermelha, badge, data e marca d’água **REABERTO**.
+- Avatares de participantes, anexos online, notificações e bloqueio de cards concluídos permanecem ativos.
 
-No Supabase:
+## Supabase
 
-1. Abra **SQL Editor**.
-2. Clique em **New query**.
-3. Abra o arquivo `supabase/05_ADICIONAR_AVATARES_E_ANEXOS.sql` deste pacote.
-4. Copie todo o conteúdo, cole no SQL Editor e clique em **Run**.
+Esta atualização **não exige um novo SQL**.
 
-Resultado esperado:
+Caso você já tenha executado anteriormente:
 
 ```text
-Atualização concluída sem apagar dados.
+supabase/05_ADICIONAR_AVATARES_E_ANEXOS.sql
 ```
 
-O script cria:
+não precisa executar nada no banco.
 
-- a coluna `attachments` na tabela `cards`;
-- o bucket privado `card-attachments`;
-- políticas de segurança para donos e participantes;
-- limite de 15 MB por arquivo.
+O pacote mantém os arquivos SQL completos apenas para reinstalação ou para outro ambiente que ainda não possua anexos e Storage configurados.
 
-O script não apaga projetos, cards, comentários, checklists ou participantes.
+> Não execute `01_RECRIAR_BANCO.sql` no banco atual. Esse arquivo apaga e recria a estrutura do projeto.
 
-## 2. Verifique a instalação
+## Preserve o config.js atual
 
-Execute o arquivo:
-
-```text
-supabase/02_VERIFICAR_INSTALACAO.sql
-```
-
-No resumo final, o esperado é:
-
-- `tabelas_encontradas`: 7
-- `tabelas_com_rls`: 7
-- `funcoes_encontradas`: 9
-- `campos_card_encontrados`: 7
-- `realtime_notificacoes`: 1
-- `bucket_anexos`: 1
-- `politicas_storage`: 3
-
-## 3. Preserve o config.js atual
-
-O `config.js` deste pacote contém campos de exemplo. Mantenha o arquivo que já funciona no seu GitHub Pages, com a Project URL e a Publishable key corretas.
+O `config.js` incluído no pacote contém campos de exemplo. Mantenha o arquivo que já funciona no seu GitHub Pages, com a Project URL e a Publishable key corretas.
 
 Nunca coloque `service_role`, Secret key ou senha do banco no frontend.
 
-## 4. Publique no GitHub Pages
+## Publicação no GitHub Pages
 
-Envie estes arquivos para a raiz do repositório:
+Substitua na raiz do repositório:
+
+```text
+index.html
+styles.css
+app.js
+.nojekyll
+```
+
+Mantenha o seu `config.js` atual. Depois do deploy, abra o site e pressione `Ctrl + F5` para limpar o cache.
+
+## Estrutura do pacote
 
 ```text
 index.html
@@ -68,10 +56,8 @@ styles.css
 app.js
 config.js
 .nojekyll
+LEIA-ME_PRIMEIRO.md
+ATENCAO_ANTES_DE_PUBLICAR.txt
+VERSAO_E_ALTERACOES.txt
+supabase/
 ```
-
-Depois do deploy, abra o site e pressione `Ctrl + F5`.
-
-## Formatos aceitos
-
-PDF, Word, Excel, PowerPoint, TXT, CSV, JPG, PNG, WEBP e ZIP. O limite é de 15 MB por arquivo e até 8 arquivos por seleção.

@@ -1,18 +1,17 @@
-KANBAN QUEST — AVATARES E ANEXOS ONLINE
+KANBAN QUEST — OWNER VISÍVEL E CARD REABERTO NEUTRO
 Versão: 2026-07-16
 
 ALTERAÇÕES DESTA VERSÃO
 - Mantido o visual escuro original aprovado.
-- Cards normais ficaram ligeiramente mais claros que os cards reabertos.
-- Avatares dos participantes adicionados na parte externa dos cards, em pilha como no Trello.
-- Participantes exibidos internamente com avatar, nome, e-mail e data de inclusão.
-- Nova área de anexos dentro dos cards.
-- Upload online por meio do Supabase Storage.
-- Bucket privado e links temporários para visualizar documentos.
-- Dono pode remover qualquer anexo; participante pode remover os próprios anexos.
-- Card concluído permanece travado: anexos podem ser visualizados, mas não alterados.
-- Contagem de anexos exibida na parte externa do card.
-- Busca também encontra cards pelo nome dos anexos.
+- Avatar do responsável pelo card sempre exibido, mesmo quando não há participantes adicionais.
+- Responsável aparece primeiro na pilha externa de avatares.
+- Dentro do card, o responsável aparece com avatar, nome, e-mail e selo “Responsável”.
+- Em cards compartilhados, o perfil e o avatar do dono são carregados online da tabela profiles.
+- Números das colunas Pendente, Em Progresso e Concluído agora usam texto branco sobre a bolinha vinho.
+- Cards reabertos voltaram a usar a mesma cor dos cards normais.
+- Mantidas a marca d’água REABERTO, a faixa vermelha, o badge e a data de reabertura.
+- Mantidos avatares de participantes, anexos online, trava de conclusão e notificações.
 
-ATUALIZAÇÃO OBRIGATÓRIA DO SUPABASE
-Execute: supabase/05_ADICIONAR_AVATARES_E_ANEXOS.sql
+SUPABASE
+- Esta atualização não exige um novo SQL.
+- O arquivo 05_ADICIONAR_AVATARES_E_ANEXOS.sql continua incluído apenas para reinstalação ou ambientes que ainda não receberam a atualização anterior.

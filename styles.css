@@ -3739,3 +3739,154 @@ button.view-participant-item:hover {
   .attachment-upload-row .btn { width: 100%; }
   .attachment-copy small { white-space: normal; }
 }
+
+/* ============================================================
+   AJUSTES 2026-07-16 — OWNER VISÍVEL, CONTADORES E REABERTOS
+   ============================================================ */
+
+/* Os números das colunas devem permanecer legíveis sobre a bolinha vinho. */
+.column-count {
+  color: #ffffff !important;
+  background: var(--accent) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .10);
+}
+
+/* O primeiro avatar é sempre o responsável pelo card. */
+.card-participant-avatar.is-owner-avatar,
+.view-participant-avatar.is-owner-avatar {
+  box-shadow:
+    0 0 0 2px rgba(245, 168, 195, .34),
+    0 8px 18px rgba(0, 0, 0, .30);
+}
+
+.card-participant-avatar.is-owner-avatar::after,
+.view-participant-avatar.is-owner-avatar::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  z-index: 4;
+  border: 2px solid #403a43;
+  border-radius: 50%;
+  background: #d35c82;
+}
+
+.view-participant-item.is-card-owner {
+  background: linear-gradient(135deg, rgba(168, 16, 70, .13), rgba(255, 255, 255, .055));
+  border-color: rgba(216, 86, 139, .24);
+}
+
+.owner-role-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #ffd7e4;
+  background: rgba(168, 16, 70, .28);
+  border: 1px solid rgba(216, 86, 139, .22);
+  font-size: .62rem;
+  font-weight: 800;
+  line-height: 1.2;
+  vertical-align: 1px;
+}
+
+/* O card reaberto usa a mesma superfície dos cards normais.
+   A distinção permanece somente na faixa vermelha, badge e marca d'água. */
+.card.is-reopened,
+.card.is-reopened:hover {
+  color: var(--card-text) !important;
+  background: linear-gradient(180deg, #3c3741, #332f38) !important;
+  border-color: rgba(255, 255, 255, .11) !important;
+  box-shadow:
+    inset 4px 0 0 var(--reopened-accent-strong),
+    0 15px 30px rgba(10, 7, 10, .23) !important;
+}
+
+.card.is-reopened:hover {
+  border-color: rgba(211, 99, 114, .55) !important;
+  box-shadow:
+    inset 4px 0 0 var(--reopened-accent-strong),
+    0 19px 36px rgba(10, 7, 10, .30) !important;
+  filter: none !important;
+}
+
+.card.is-reopened .card-title,
+.card.is-reopened .card-check-item,
+.card.is-reopened .card-check-item span,
+.card.is-reopened .participant-chip,
+.card.is-reopened .card-actions button {
+  color: var(--card-text) !important;
+}
+
+.card.is-reopened .card-desc,
+.card.is-reopened .card-checklist-title,
+.card.is-reopened .card-comments-info,
+.card.is-reopened .card-attachments-info,
+.card.is-reopened .meta-chip {
+  color: var(--card-muted) !important;
+}
+
+.card.is-reopened .label {
+  color: #f5a8c3 !important;
+  background: rgba(168, 16, 70, .22) !important;
+  border-color: rgba(218, 70, 121, .16) !important;
+}
+
+.card.is-reopened .meta-chip,
+.card.is-reopened .participant-chip,
+.card.is-reopened .card-check-item {
+  background: rgba(255, 255, 255, .065) !important;
+  border-color: rgba(255, 255, 255, .08) !important;
+}
+
+.card.is-reopened .meta-chip.reopened-meta {
+  color: #ffdce4 !important;
+  background: rgba(168, 16, 70, .22) !important;
+  border-color: rgba(216, 86, 139, .22) !important;
+}
+
+.card.is-reopened .card-check-item.done {
+  color: var(--card-muted) !important;
+}
+
+.card.is-reopened .card-progress {
+  background: rgba(255, 255, 255, .075) !important;
+}
+
+.card.is-reopened .card-progress-fill {
+  background: linear-gradient(90deg, #b5144d, #7e2948) !important;
+}
+
+.card.is-reopened .card-comments-row {
+  border-top-color: rgba(255, 255, 255, .10) !important;
+}
+
+.card.is-reopened .card-participant-avatar {
+  border-color: #403a43 !important;
+}
+
+/* Faixa de status sempre visível no card reaberto. */
+.card.is-reopened::before,
+.card.is-reopened:hover::before {
+  height: 4px !important;
+  opacity: 1 !important;
+  transform: scaleX(1) translateZ(0) !important;
+  background: linear-gradient(90deg, #d36372, #a81046) !important;
+}
+
+.card.is-reopened .reopened-watermark {
+  color: rgba(255, 220, 228, .055) !important;
+}
+
+@media (max-width: 700px) {
+  .view-participant-copy strong {
+    white-space: normal;
+  }
+  .owner-role-badge {
+    margin-left: 5px;
+  }
+}
