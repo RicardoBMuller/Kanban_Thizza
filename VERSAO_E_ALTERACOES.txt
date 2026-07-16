@@ -1,10 +1,18 @@
-KANBAN QUEST — FCC VISUAL ORIGINAL RESTAURADO
+KANBAN QUEST — AVATARES E ANEXOS ONLINE
 Versão: 2026-07-16
 
 ALTERAÇÕES DESTA VERSÃO
-- Restaurado o visual escuro original do Kanban Quest/FCC.
-- Removido o tema institucional claro da versão anterior.
-- Mantidas as correções de legibilidade das fontes.
-- Textos de cards, modais, checklists, comentários, participantes, datas e campos permanecem claros e com alto contraste.
-- Card reaberto continua com destaque salmão discreto, sem prejudicar a leitura.
-- Nenhuma alteração no banco de dados ou no Supabase é necessária.
+- Mantido o visual escuro original aprovado.
+- Cards normais ficaram ligeiramente mais claros que os cards reabertos.
+- Avatares dos participantes adicionados na parte externa dos cards, em pilha como no Trello.
+- Participantes exibidos internamente com avatar, nome, e-mail e data de inclusão.
+- Nova área de anexos dentro dos cards.
+- Upload online por meio do Supabase Storage.
+- Bucket privado e links temporários para visualizar documentos.
+- Dono pode remover qualquer anexo; participante pode remover os próprios anexos.
+- Card concluído permanece travado: anexos podem ser visualizados, mas não alterados.
+- Contagem de anexos exibida na parte externa do card.
+- Busca também encontra cards pelo nome dos anexos.
+
+ATUALIZAÇÃO OBRIGATÓRIA DO SUPABASE
+Execute: supabase/05_ADICIONAR_AVATARES_E_ANEXOS.sql

@@ -222,6 +222,19 @@
           <div id="participantSearchResults" class="participant-search-results"></div>
           <div id="selectedParticipantsList" class="selected-participants-list"></div>
         </div>
+        <div class="field attachments-field">
+          <div class="section-inline-header attachments-field-header">
+            <label class="field-label">Anexos</label>
+            <span id="editAttachmentsCounter" class="counter-badge">0</span>
+          </div>
+          <input id="cardAttachmentInput" class="attachment-file-input" type="file" multiple
+                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.webp,.zip,application/pdf,image/*" />
+          <div class="attachment-upload-row">
+            <button id="selectAttachmentBtn" class="btn btn-soft" type="button">📎 Selecionar documentos</button>
+            <span id="attachmentUploadHint" class="helper">PDF, Office, imagens, TXT, CSV ou ZIP. Máximo de 15 MB por arquivo.</span>
+          </div>
+          <div id="editAttachmentsList" class="attachments-list"></div>
+        </div>
         <div class="field">
           <label class="field-label">Checklist</label>
           <div class="inline-add">
@@ -279,6 +292,19 @@
             <span id="viewParticipantsCounter" class="counter-badge">0</span>
           </div>
           <div id="viewCardParticipants" class="participants-list"></div>
+        </div>
+        <div class="view-section attachments-view-section">
+          <div class="section-inline-header">
+            <h4>📎 Anexos</h4>
+            <span id="viewAttachmentsCounter" class="counter-badge">0</span>
+          </div>
+          <input id="viewAttachmentInput" class="attachment-file-input" type="file" multiple
+                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.webp,.zip,application/pdf,image/*" />
+          <div id="viewAttachmentUploadRow" class="attachment-upload-row attachment-upload-row-view">
+            <button id="viewSelectAttachmentBtn" class="btn btn-soft" type="button">📎 Anexar documentos</button>
+            <span class="helper">Os arquivos ficam armazenados online no Supabase.</span>
+          </div>
+          <div id="viewAttachmentsList" class="attachments-list attachments-list-view"></div>
         </div>
         <div class="view-section">
           <div class="section-inline-header">

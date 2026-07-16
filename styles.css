@@ -3361,3 +3361,381 @@ html[data-theme="light"] .view-section {
 .card[data-reopened="true"] .card-meta {
   color: #fff8fb !important;
 }
+
+/* ======================================================================
+   AVATARES, ANEXOS E DIFERENCIAÇÃO DOS CARDS — 2026-07-16
+   ====================================================================== */
+
+/* Cards normais ligeiramente mais claros que os reabertos. O contraste
+   continua escuro, mas a diferença de status fica perceptível sem depender
+   apenas da marca d'água. */
+.card:not(.is-reopened):not(.is-completed),
+.card:not(.is-reopened):not(.is-completed):hover {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.035), transparent 32%),
+    linear-gradient(180deg, #4b454f 0%, #403b45 100%) !important;
+  border-color: rgba(255,255,255,.16) !important;
+  color: #fff8fb !important;
+}
+
+.card:not(.is-reopened):not(.is-completed):hover {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), transparent 34%),
+    linear-gradient(180deg, #534c57 0%, #46404b 100%) !important;
+  border-color: rgba(216,86,139,.34) !important;
+  box-shadow: 0 20px 38px rgba(8,6,9,.31) !important;
+}
+
+.card:not(.is-reopened):not(.is-completed) .card-title,
+.card:not(.is-reopened):not(.is-completed) .card-check-item {
+  color: #fff8fb !important;
+}
+
+.card:not(.is-reopened):not(.is-completed) .card-desc,
+.card:not(.is-reopened):not(.is-completed) .card-checklist-title,
+.card:not(.is-reopened):not(.is-completed) .card-comments-info,
+.card:not(.is-reopened):not(.is-completed) .card-attachments-info,
+.card:not(.is-reopened):not(.is-completed) .meta-chip {
+  color: #ded3d9 !important;
+}
+
+.card:not(.is-reopened):not(.is-completed) .card-check-item,
+.card:not(.is-reopened):not(.is-completed) .meta-chip {
+  background: rgba(20,16,21,.25) !important;
+  border-color: rgba(255,255,255,.08) !important;
+}
+
+/* Rodapé do card inspirado no Trello: indicadores à esquerda e avatares
+   empilhados junto às ações no lado direito. */
+.card-footer-row {
+  align-items: flex-end;
+  min-height: 42px;
+}
+
+.card-activity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.card-attachments-info {
+  color: var(--card-muted);
+  font-size: .8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.card-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.card-avatar-stack {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 30px;
+  padding-left: 8px;
+}
+
+.card-participant-avatar,
+.view-participant-avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, #a81046, #71334e);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -.02em;
+  box-shadow: 0 7px 16px rgba(0,0,0,.28);
+}
+
+.card-participant-avatar {
+  width: 31px;
+  height: 31px;
+  margin-left: -8px;
+  border: 2px solid #403a43;
+  font-size: .67rem;
+  transition: transform .17s ease, z-index .17s ease, box-shadow .17s ease;
+}
+
+.card-participant-avatar:first-child { margin-left: 0; }
+.card-participant-avatar:nth-child(1) { z-index: 8; }
+.card-participant-avatar:nth-child(2) { z-index: 7; }
+.card-participant-avatar:nth-child(3) { z-index: 6; }
+.card-participant-avatar:nth-child(4) { z-index: 5; }
+.card-participant-avatar:nth-child(5) { z-index: 4; }
+.card-participant-avatar:nth-child(6) { z-index: 3; }
+
+.card-participant-avatar:hover {
+  z-index: 20;
+  transform: translateY(-3px) scale(1.1);
+  box-shadow: 0 10px 20px rgba(0,0,0,.38);
+}
+
+.card.is-reopened .card-participant-avatar { border-color: #3a323a; }
+.card.is-completed .card-participant-avatar { border-color: #39353d; }
+
+.card-participant-avatar img,
+.view-participant-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 2;
+}
+
+.participant-avatar-initials {
+  position: relative;
+  z-index: 1;
+  line-height: 1;
+}
+
+.participant-avatar-more {
+  background: #6b606a;
+  border-color: #403a43;
+  color: #fff;
+  font-size: .66rem;
+}
+
+/* Participantes dentro do card. */
+.participants-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.view-participant-item {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  text-align: left;
+  color: #fff8fb;
+  background: rgba(255,255,255,.065);
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 14px;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+button.view-participant-item { cursor: pointer; }
+button.view-participant-item:hover {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,.095);
+  border-color: rgba(216,86,139,.34);
+}
+
+.view-participant-avatar {
+  width: 42px;
+  height: 42px;
+  border: 2px solid rgba(255,255,255,.14);
+  font-size: .78rem;
+}
+
+.view-participant-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.view-participant-copy strong {
+  color: #fff8fb !important;
+  font-size: .87rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.view-participant-copy small {
+  color: #cfc3ca !important;
+  font-size: .73rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* Anexos dentro dos modais de edição e visualização. */
+.attachment-file-input {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.attachments-field-header { margin-bottom: 10px; }
+.attachments-field-header .field-label { margin: 0; }
+
+.attachment-upload-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 11px;
+  border: 1px dashed rgba(255,255,255,.15);
+  border-radius: 14px;
+  background: rgba(255,255,255,.035);
+}
+
+.attachment-upload-row .helper {
+  flex: 1 1 240px;
+  margin: 0;
+  color: #cfc2ca !important;
+}
+
+.attachment-upload-row-view { margin-bottom: 10px; }
+
+.attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 14px;
+  background: rgba(255,255,255,.065);
+  overflow: hidden;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+.attachment-item:hover {
+  background: rgba(255,255,255,.09);
+  border-color: rgba(216,86,139,.32);
+  transform: translateY(-1px);
+}
+
+.attachment-item.is-pending {
+  border-style: dashed;
+  background: rgba(168,16,70,.09);
+}
+
+.attachment-open-btn {
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  text-align: left;
+  color: #fff8fb;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.attachment-open-btn:disabled { cursor: default; opacity: 1; }
+
+.attachment-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(168,16,70,.18);
+  border: 1px solid rgba(216,86,139,.19);
+  font-size: 1.05rem;
+}
+
+.attachment-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.attachment-copy strong {
+  color: #fff8fb !important;
+  font-size: .84rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-copy small {
+  color: #cfc3ca !important;
+  font-size: .72rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-remove-btn {
+  width: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  color: #f5cad5;
+  background: rgba(168,16,70,.08);
+  border-left: 1px solid rgba(255,255,255,.08);
+  font-weight: 800;
+}
+
+.attachment-remove-btn:hover {
+  color: #fff;
+  background: rgba(195,58,88,.30);
+}
+
+.attachment-empty-state {
+  padding: 13px 14px;
+  color: #cfc3ca;
+  text-align: center;
+  border: 1px dashed rgba(255,255,255,.11);
+  border-radius: 13px;
+  background: rgba(255,255,255,.025);
+  font-size: .8rem;
+}
+
+.card.is-reopened .card-attachments-info { color: var(--reopened-muted) !important; }
+
+#viewCardModalOverlay.is-reopened-context .attachment-item,
+#cardModalOverlay.is-reopened-context .attachment-item {
+  background: rgba(255,255,255,.065) !important;
+  border-color: rgba(255,255,255,.10) !important;
+}
+
+#viewCardModalOverlay.is-reopened-context .attachment-item:hover,
+#cardModalOverlay.is-reopened-context .attachment-item:hover {
+  background: rgba(229,138,147,.075) !important;
+  border-color: rgba(229,138,147,.30) !important;
+}
+
+@media (max-width: 700px) {
+  .card-comments-row.card-footer-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .card-footer-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .participants-list { grid-template-columns: 1fr; }
+  .attachment-upload-row { align-items: stretch; }
+  .attachment-upload-row .btn { width: 100%; }
+  .attachment-copy small { white-space: normal; }
+}

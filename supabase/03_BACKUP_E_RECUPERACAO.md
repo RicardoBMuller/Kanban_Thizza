@@ -34,3 +34,9 @@ Documentação oficial:
 
 - `https://supabase.com/docs/guides/platform/backups`
 - `https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore`
+
+## Anexos dos cards
+
+A coluna `cards.attachments` guarda apenas os metadados dos documentos. Os arquivos físicos ficam no bucket privado `card-attachments` do Supabase Storage.
+
+Um backup somente do PostgreSQL não inclui os arquivos do Storage. Para uma cópia integral, exporte também o conteúdo do bucket `card-attachments` pelo painel ou pela CLI do Supabase.

@@ -1,6 +1,11 @@
 /*
-  Execute depois do 01_RECRIAR_BANCO.sql em uma instalação nova
-  OU depois do 04_ATUALIZAR_CONCLUSAO_REABERTURA.sql em um banco existente.
+  KANBAN QUEST — VERIFICAÇÃO DA INSTALAÇÃO
+
+  Execute depois de:
+  - 01_RECRIAR_BANCO.sql, em uma instalação nova; ou
+  - 04_ATUALIZAR_CONCLUSAO_REABERTURA.sql e
+    05_ADICIONAR_AVATARES_E_ANEXOS.sql, em um banco existente.
+
   Nenhum dado é alterado.
 */
 
@@ -19,7 +24,7 @@ where t.table_schema = 'public'
   )
 order by table_name;
 
--- 2. Lista as políticas RLS do projeto.
+-- 2. Lista as políticas RLS das tabelas públicas.
 select
   schemaname,
   tablename,
@@ -33,19 +38,19 @@ where schemaname = 'public'
   )
 order by tablename, policyname;
 
--- 3. As 6 funções abaixo devem aparecer.
-select
-  routine_name
+-- 3. As 9 funções abaixo devem aparecer.
+select routine_name
 from information_schema.routines
 where routine_schema = 'public'
   and routine_name in (
     'search_profiles', 'is_card_participant', 'is_project_participant',
     'handle_new_user', 'enforce_card_update_permissions',
-    'transition_card_status'
+    'transition_card_status', 'is_card_owner',
+    'can_access_card_attachment', 'can_edit_card_attachment'
   )
 order by routine_name;
 
--- 4. Os 6 campos de conclusão/reabertura devem aparecer.
+-- 4. Os 7 campos abaixo devem aparecer na tabela cards.
 select
   column_name,
   data_type,
@@ -56,11 +61,43 @@ where table_schema = 'public'
   and table_name = 'cards'
   and column_name in (
     'completed_at', 'completed_by', 'reopened_at',
-    'reopened_by', 'reopened_count', 'is_reopened'
+    'reopened_by', 'reopened_count', 'is_reopened', 'attachments'
   )
 order by ordinal_position;
 
--- 5. Resumo esperado: 7 tabelas, 7 com RLS, 6 funções e 6 campos.
+-- 5. O bucket privado de anexos deve aparecer com limite de 15 MB.
+select
+  id,
+  name,
+  public,
+  file_size_limit
+from storage.buckets
+where id = 'card-attachments';
+
+-- 6. As três políticas do Storage devem aparecer.
+select
+  schemaname,
+  tablename,
+  policyname,
+  cmd
+from pg_policies
+where schemaname = 'storage'
+  and tablename = 'objects'
+  and policyname in (
+    'card_attachments_select',
+    'card_attachments_insert',
+    'card_attachments_delete'
+  )
+order by policyname;
+
+-- 7. Resumo esperado:
+-- tabelas_encontradas = 7
+-- tabelas_com_rls = 7
+-- funcoes_encontradas = 9
+-- campos_card_encontrados = 7
+-- realtime_notificacoes = 1
+-- bucket_anexos = 1
+-- politicas_storage = 3
 select
   (
     select count(*)
@@ -89,7 +126,8 @@ select
       and routine_name in (
         'search_profiles', 'is_card_participant', 'is_project_participant',
         'handle_new_user', 'enforce_card_update_permissions',
-        'transition_card_status'
+        'transition_card_status', 'is_card_owner',
+        'can_access_card_attachment', 'can_edit_card_attachment'
       )
   ) as funcoes_encontradas,
   (
@@ -99,13 +137,27 @@ select
       and table_name = 'cards'
       and column_name in (
         'completed_at', 'completed_by', 'reopened_at',
-        'reopened_by', 'reopened_count', 'is_reopened'
+        'reopened_by', 'reopened_count', 'is_reopened', 'attachments'
       )
-  ) as campos_status_encontrados,
+  ) as campos_card_encontrados,
   (
     select count(*)
     from pg_publication_tables
     where pubname = 'supabase_realtime'
       and schemaname = 'public'
       and tablename = 'notifications'
-  ) as realtime_notificacoes;
+  ) as realtime_notificacoes,
+  (
+    select count(*) from storage.buckets where id = 'card-attachments'
+  ) as bucket_anexos,
+  (
+    select count(*)
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname in (
+        'card_attachments_select',
+        'card_attachments_insert',
+        'card_attachments_delete'
+      )
+  ) as politicas_storage;

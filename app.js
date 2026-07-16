@@ -7,7 +7,7 @@ const SUPABASE_URL = String(KANBAN_CONFIG.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(
   KANBAN_CONFIG.SUPABASE_PUBLISHABLE_KEY || KANBAN_CONFIG.SUPABASE_ANON_KEY || ""
 ).trim();
-const APP_VERSION = "2026.07.15-fcc-dark-1";
+const APP_VERSION = "2026.07.16-fcc-avatars-attachments-1";
 
 // ============================================================
 // CONSTANTES
@@ -15,6 +15,13 @@ const APP_VERSION = "2026.07.15-fcc-dark-1";
 const STORAGE_KEY              = "kanban_fcc_pro_v5";
 const SIDEBAR_KEY              = "kanban_fcc_sidebar_collapsed";
 const LOGIN_WELCOME_PENDING_KEY = "kanban_login_welcome_pending";
+const ATTACHMENTS_BUCKET       = "card-attachments";
+const MAX_ATTACHMENT_SIZE      = 15 * 1024 * 1024;
+const MAX_FILES_PER_SELECTION  = 8;
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
+  "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+  "txt", "csv", "jpg", "jpeg", "png", "webp", "zip"
+]);
 
 const defaultColumns = () => ({ todo: [], doing: [], done: [] });
 
@@ -29,6 +36,10 @@ let currentTargetColumn  = "todo";
 let projectModalMode     = "create";
 let tempChecklist        = [];
 let tempComments         = [];
+let tempAttachments      = [];
+let pendingAttachmentFiles = [];
+let removedAttachmentPaths = new Set();
+let attachmentActionInProgress = false;
 const modalCloseTimers   = new WeakMap();
 
 let supabase             = null;
@@ -127,6 +138,11 @@ const editChecklistList     = document.getElementById("editChecklistList");
 const newCommentInput       = document.getElementById("newCommentInput");
 const addCommentBtn         = document.getElementById("addCommentBtn");
 const editCommentsList      = document.getElementById("editCommentsList");
+const cardAttachmentInput   = document.getElementById("cardAttachmentInput");
+const selectAttachmentBtn   = document.getElementById("selectAttachmentBtn");
+const editAttachmentsList   = document.getElementById("editAttachmentsList");
+const editAttachmentsCounter = document.getElementById("editAttachmentsCounter");
+const attachmentUploadHint  = document.getElementById("attachmentUploadHint");
 
 // Modal visualização
 const viewCardModalOverlay   = document.getElementById("viewCardModalOverlay");
@@ -146,6 +162,11 @@ const viewChecklistProgress  = document.getElementById("viewChecklistProgress");
 const viewChecklistList      = document.getElementById("viewChecklistList");
 const viewCommentsCounter    = document.getElementById("viewCommentsCounter");
 const viewCommentsList       = document.getElementById("viewCommentsList");
+const viewAttachmentInput    = document.getElementById("viewAttachmentInput");
+const viewSelectAttachmentBtn = document.getElementById("viewSelectAttachmentBtn");
+const viewAttachmentsList    = document.getElementById("viewAttachmentsList");
+const viewAttachmentsCounter = document.getElementById("viewAttachmentsCounter");
+const viewAttachmentUploadRow = document.getElementById("viewAttachmentUploadRow");
 const closeViewCardModalBtn  = document.getElementById("closeViewCardModalBtn");
 const closeViewCardFooterBtn = document.getElementById("closeViewCardFooterBtn");
 const viewEditCardBtn        = document.getElementById("viewEditCardBtn");
@@ -239,6 +260,10 @@ function bindEvents() {
   on(statusConfirmOverlay, "click", e => { if (e.target === statusConfirmOverlay) resolveStatusConfirmation(false); });
   on(addChecklistItemBtn, "click", handleAddChecklistItem);
   on(addCommentBtn, "click", handleAddComment);
+  on(selectAttachmentBtn, "click", () => cardAttachmentInput?.click());
+  on(cardAttachmentInput, "change", handleEditAttachmentSelection);
+  on(viewSelectAttachmentBtn, "click", () => viewAttachmentInput?.click());
+  on(viewAttachmentInput, "change", handleViewAttachmentSelection);
   on(newChecklistItemInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleAddChecklistItem(); }});
   on(newCommentInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleAddComment(); }});
   on(searchInput, "input", renderBoard);
@@ -624,6 +649,7 @@ async function loadCloudData() {
       participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : [], row.created_at),
       checklist: normalizeChecklistItems(Array.isArray(row.checklist) ? row.checklist : [], row.created_at),
       comments: normalizeComments(Array.isArray(row.comments) ? row.comments : [], row.created_at),
+      attachments: normalizeAttachments(Array.isArray(row.attachments) ? row.attachments : [], row.created_at),
       createdAt: row.created_at || new Date().toISOString(),
       updatedAt: row.updated_at || row.created_at || new Date().toISOString(),
       completedAt: row.completed_at || null,
@@ -690,6 +716,7 @@ async function loadSharedCards() {
       participants: normalizeParticipants(Array.isArray(row.participants) ? row.participants : [], row.created_at),
       checklist: normalizeChecklistItems(Array.isArray(row.checklist) ? row.checklist : [], row.created_at),
       comments: normalizeComments(Array.isArray(row.comments) ? row.comments : [], row.created_at),
+      attachments: normalizeAttachments(Array.isArray(row.attachments) ? row.attachments : [], row.created_at),
       createdAt: row.created_at || new Date().toISOString(),
       updatedAt: row.updated_at || row.created_at || new Date().toISOString(),
       completedAt: row.completed_at || null,
@@ -728,7 +755,7 @@ function findSharedCard(cardId) {
  */
 async function saveSharedCardUpdate(cardId, updates) {
   if (!supabase || !authUser) return false;
-  const allowedFields = ["title", "description", "checklist", "comments"];
+  const allowedFields = ["title", "description", "checklist", "comments", "attachments"];
   const sharedCard = findSharedCard(cardId);
   if (sharedCard?.columnId === "done") {
     alert("Este card está concluído e travado. Reabra-o antes de fazer alterações.");
@@ -776,30 +803,46 @@ async function addSharedCardComment(cardId, text) {
 
 async function handleSharedCardSave(cardId) {
   const title = cardTitleInput.value.trim();
-  if (!title) { alert("Digite um título para o card."); cardTitleInput.focus(); return; }
+  if (!title) { alert("Digite um título para o card."); cardTitleInput.focus(); return false; }
 
-  const updates = {
-    title,
-    description: cardDescInput.value.trim(),
-    checklist: clone(tempChecklist),
-    comments: clone(tempComments)
-  };
-  const ok = await saveSharedCardUpdate(cardId, updates);
-  if (ok) {
+  let uploaded = [];
+  try {
+    if (pendingAttachmentFiles.length) {
+      uploaded = await uploadAttachmentFiles(cardId, pendingAttachmentFiles);
+    }
+    const updates = {
+      title,
+      description: cardDescInput.value.trim(),
+      checklist: clone(tempChecklist),
+      comments: clone(tempComments),
+      attachments: normalizeAttachments([...clone(tempAttachments), ...uploaded])
+    };
+    const ok = await saveSharedCardUpdate(cardId, updates);
+    if (!ok) throw new Error("O Supabase não aceitou a atualização do card compartilhado.");
+
     const sc = findSharedCard(cardId);
     if (sc) {
       sc.card.title = updates.title;
       sc.card.description = updates.description;
       sc.card.checklist = updates.checklist;
       sc.card.comments = updates.comments;
+      sc.card.attachments = updates.attachments;
     }
+    if (removedAttachmentPaths.size) {
+      await removeAttachmentObjects([...removedAttachmentPaths]);
+    }
+    pendingAttachmentFiles = [];
+    removedAttachmentPaths = new Set();
     renderBoard();
     cardModalDirty = false;
     closeCardModal(true);
     return true;
+  } catch (error) {
+    if (uploaded.length) await removeAttachmentObjects(uploaded.map(item => item.path), { silent: true });
+    console.error("Erro ao salvar card compartilhado:", error);
+    alert(`Não foi possível salvar o card online.\n\nMotivo: ${formatCloudError(error)}`);
+    return false;
   }
-  alert("Não foi possível salvar o card. Tente novamente.");
-  return false;
 }
 
 // ============================================================
@@ -836,6 +879,7 @@ function flattenCardsForCloud(project) {
         participants: normalizeParticipants(card.participants || [], card.createdAt),
         checklist: normalizeChecklistItems(card.checklist || [], card.createdAt),
         comments: normalizeComments(Array.isArray(card.comments) ? card.comments : [], card.createdAt),
+        attachments: normalizeAttachments(Array.isArray(card.attachments) ? card.attachments : [], card.createdAt),
         created_at: card.createdAt || new Date().toISOString(),
         completed_at: card.completedAt || null,
         completed_by: card.completedBy || null,
@@ -919,6 +963,7 @@ async function persistCardToCloud(card, projectId, columnKey, position) {
     participants: normalizeParticipants(card.participants || [], card.createdAt),
     checklist: normalizeChecklistItems(card.checklist || [], card.createdAt),
     comments: normalizeComments(Array.isArray(card.comments) ? card.comments : [], card.createdAt),
+    attachments: normalizeAttachments(Array.isArray(card.attachments) ? card.attachments : [], card.createdAt),
     created_at: card.createdAt || new Date().toISOString(),
     completed_at: card.completedAt || null,
     completed_by: card.completedBy || null,
@@ -944,6 +989,7 @@ async function updateOwnedCardInCloud(cardId, updates) {
   if ("participants" in updates) payload.participants = normalizeParticipants(updates.participants || [], localFound?.card?.createdAt);
   if ("checklist" in updates) payload.checklist = normalizeChecklistItems(updates.checklist || [], localFound?.card?.createdAt);
   if ("comments" in updates) payload.comments = normalizeComments(updates.comments || [], localFound?.card?.createdAt);
+  if ("attachments" in updates) payload.attachments = normalizeAttachments(updates.attachments || [], localFound?.card?.createdAt);
   if ("column_key" in updates) payload.column_key = updates.column_key;
   if ("project_id" in updates) payload.project_id = String(updates.project_id);
   if ("position" in updates) payload.position = updates.position;
@@ -1146,6 +1192,86 @@ function normalizeComments(items, fallbackCreatedAt = null) {
   }));
 }
 
+function normalizeAttachments(items, fallbackCreatedAt = null) {
+  return (Array.isArray(items) ? items : []).map(item => {
+    if (!item) return null;
+    return {
+      id: item.id || uid(),
+      name: item.name || item.file_name || "Documento",
+      path: item.path || item.storage_path || "",
+      size: Number(item.size || item.size_bytes || 0),
+      mimeType: item.mimeType || item.mime_type || "application/octet-stream",
+      uploadedAt: item.uploadedAt || item.uploaded_at || item.createdAt || item.created_at || fallbackCreatedAt || new Date().toISOString(),
+      uploadedBy: item.uploadedBy || item.uploaded_by || null,
+      uploadedByName: item.uploadedByName || item.uploaded_by_name || "Usuário"
+    };
+  }).filter(item => item && item.path);
+}
+
+function participantAvatarHtml(participant, className = "participant-avatar") {
+  const normalized = normalizeParticipant(participant);
+  const name = participantDisplayName(normalized) || "Participante";
+  const initials = getInitials(name);
+  if (normalized?.avatar_url) {
+    return `<span class="${className}" title="${escapeHtml(name)}"><span class="participant-avatar-initials" aria-hidden="true">${escapeHtml(initials)}</span><img src="${escapeHtml(normalized.avatar_url)}" alt="Avatar de ${escapeHtml(name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></span>`;
+  }
+  return `<span class="${className} participant-avatar-fallback" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${escapeHtml(initials)}</span>`;
+}
+
+function renderParticipantAvatarStack(participants, maxVisible = 5) {
+  const normalized = normalizeParticipants(participants || []);
+  if (!normalized.length) return "";
+  const visible = normalized.slice(0, maxVisible);
+  const remaining = normalized.length - visible.length;
+  return `<div class="card-avatar-stack" aria-label="${normalized.length} participante(s)">${visible.map(p => participantAvatarHtml(p, "card-participant-avatar")).join("")}${remaining > 0 ? `<span class="card-participant-avatar participant-avatar-more" title="Mais ${remaining} participante(s)">+${remaining}</span>` : ""}</div>`;
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes || 0);
+  if (!Number.isFinite(value) || value <= 0) return "Tamanho não informado";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+  return `${size >= 10 || unit === 0 ? Math.round(size) : size.toFixed(1)} ${units[unit]}`;
+}
+
+function getFileExtension(fileName) {
+  const parts = String(fileName || "").toLowerCase().split(".");
+  return parts.length > 1 ? parts.pop() : "";
+}
+
+function sanitizeStorageFileName(fileName) {
+  const normalized = String(fileName || "documento")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 120);
+  return normalized || "documento";
+}
+
+function validateAttachmentFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return [];
+  if (files.length > MAX_FILES_PER_SELECTION) {
+    throw new Error(`Selecione no máximo ${MAX_FILES_PER_SELECTION} arquivos por vez.`);
+  }
+  files.forEach(file => {
+    const extension = getFileExtension(file.name);
+    if (!ALLOWED_ATTACHMENT_EXTENSIONS.has(extension)) {
+      throw new Error(`O arquivo “${file.name}” não possui um formato permitido.`);
+    }
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      throw new Error(`O arquivo “${file.name}” ultrapassa o limite de 15 MB.`);
+    }
+    if (file.size <= 0) {
+      throw new Error(`O arquivo “${file.name}” está vazio.`);
+    }
+  });
+  return files;
+}
+
 function renderSelectedParticipants() {
   if (!selectedParticipantsList) return;
   selectedParticipantsList.innerHTML = "";
@@ -1239,6 +1365,274 @@ Motivo: ${formatCloudError(error)}`);
 }
 
 // ============================================================
+// ANEXOS — SUPABASE STORAGE (100% ONLINE)
+// ============================================================
+function getCardAccessEntry(cardId) {
+  const shared = findSharedCard(String(cardId));
+  if (shared) return { card: shared.card, columnId: shared.columnId, isShared: true, ownerId: shared.ownerId };
+  const owned = findCard(String(cardId));
+  if (owned) return { card: owned.card, columnId: owned.columnId, isShared: false, ownerId: authUser?.id || null };
+  return null;
+}
+
+function canRemoveAttachment(attachment, accessEntry) {
+  if (!authUser || !accessEntry || accessEntry.columnId === "done") return false;
+  if (!accessEntry.isShared) return true;
+  return attachment?.uploadedBy === authUser.id;
+}
+
+async function uploadAttachmentFiles(cardId, files) {
+  if (!supabase || !authUser) throw new Error("É necessário estar conectado para anexar documentos.");
+  const access = getCardAccessEntry(cardId);
+  if (!access) throw new Error("O card precisa estar salvo antes do envio dos anexos.");
+  if (access.columnId === "done") throw new Error("Cards concluídos estão travados e não aceitam novos anexos.");
+
+  const validatedFiles = validateAttachmentFiles(files);
+  if (!validatedFiles.length) return [];
+
+  const presentation = getUserPresentation(authUser);
+  const ownerFolder = access.ownerId || authUser.id;
+  const uploaded = [];
+
+  try {
+    for (const file of validatedFiles) {
+      const uniquePart = (window.crypto?.randomUUID?.() || uid()).replace(/[^a-zA-Z0-9_-]/g, "");
+      const safeName = sanitizeStorageFileName(file.name);
+      const path = `${String(cardId)}/${String(ownerFolder)}/${String(authUser.id)}/${Date.now()}-${uniquePart}-${safeName}`;
+      const { error } = await supabase.storage
+        .from(ATTACHMENTS_BUCKET)
+        .upload(path, file, {
+          upsert: false,
+          contentType: file.type || "application/octet-stream",
+          cacheControl: "3600"
+        });
+      if (error) throw error;
+
+      uploaded.push({
+        id: uniquePart,
+        name: file.name,
+        path,
+        size: file.size,
+        mimeType: file.type || "application/octet-stream",
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: authUser.id,
+        uploadedByName: presentation.fullName
+      });
+    }
+    return uploaded;
+  } catch (error) {
+    if (uploaded.length) {
+      await removeAttachmentObjects(uploaded.map(item => item.path), { silent: true });
+    }
+    throw error;
+  }
+}
+
+async function removeAttachmentObjects(paths, { silent = false } = {}) {
+  const cleanPaths = [...new Set((paths || []).filter(Boolean))];
+  if (!supabase || !cleanPaths.length) return true;
+  const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove(cleanPaths);
+  if (error) {
+    console.error("Erro ao remover anexos do Storage:", error);
+    if (!silent) alert(`O registro foi atualizado, mas não foi possível remover um arquivo do armazenamento.\n\nMotivo: ${formatCloudError(error)}`);
+    return false;
+  }
+  return true;
+}
+
+async function openAttachmentFile(attachment) {
+  if (!supabase || !attachment?.path) return;
+  const { data, error } = await supabase.storage
+    .from(ATTACHMENTS_BUCKET)
+    .createSignedUrl(attachment.path, 120, { download: false });
+  if (error || !data?.signedUrl) {
+    console.error("Erro ao abrir anexo:", error);
+    alert(`Não foi possível abrir o anexo.\n\nMotivo: ${formatCloudError(error)}`);
+    return;
+  }
+  window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+}
+
+function attachmentIcon(attachment) {
+  const ext = getFileExtension(attachment?.name);
+  if (["jpg", "jpeg", "png", "webp"].includes(ext)) return "🖼️";
+  if (ext === "pdf") return "📕";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "📊";
+  if (["ppt", "pptx"].includes(ext)) return "📽️";
+  if (["doc", "docx", "txt"].includes(ext)) return "📄";
+  if (ext === "zip") return "🗜️";
+  return "📎";
+}
+
+function createAttachmentRow(attachment, { pending = false, removable = false, onRemove = null } = {}) {
+  const row = document.createElement("div");
+  row.className = `attachment-item${pending ? " is-pending" : ""}`;
+  row.innerHTML = `
+    <button class="attachment-open-btn" type="button" ${pending ? "disabled" : ""} title="${pending ? "Será enviado ao salvar" : "Abrir anexo"}">
+      <span class="attachment-icon">${attachmentIcon(attachment)}</span>
+      <span class="attachment-copy">
+        <strong>${escapeHtml(attachment.name || "Documento")}</strong>
+        <small>${pending ? "Aguardando o salvamento" : `${escapeHtml(formatFileSize(attachment.size))} · ${escapeHtml(attachment.uploadedByName || "Usuário")} · ${escapeHtml(formatDateTime(attachment.uploadedAt))}`}</small>
+      </span>
+    </button>
+    ${removable ? `<button class="attachment-remove-btn" type="button" aria-label="Remover anexo" title="Remover anexo">✕</button>` : ""}`;
+
+  if (!pending) row.querySelector(".attachment-open-btn")?.addEventListener("click", () => openAttachmentFile(attachment));
+  if (removable && onRemove) row.querySelector(".attachment-remove-btn")?.addEventListener("click", onRemove);
+  return row;
+}
+
+function renderEditAttachments() {
+  if (!editAttachmentsList) return;
+  editAttachmentsList.innerHTML = "";
+  const access = currentEditingCardId ? getCardAccessEntry(currentEditingCardId) : null;
+  const allCount = tempAttachments.length + pendingAttachmentFiles.length;
+  if (editAttachmentsCounter) editAttachmentsCounter.textContent = String(allCount);
+
+  tempAttachments.forEach(attachment => {
+    const removable = !access || canRemoveAttachment(attachment, access);
+    editAttachmentsList.appendChild(createAttachmentRow(attachment, {
+      removable,
+      onRemove: () => {
+        if (attachment.path) removedAttachmentPaths.add(attachment.path);
+        tempAttachments = tempAttachments.filter(item => item.id !== attachment.id);
+        cardModalDirty = true;
+        renderEditAttachments();
+      }
+    }));
+  });
+
+  pendingAttachmentFiles.forEach((file, index) => {
+    editAttachmentsList.appendChild(createAttachmentRow({
+      id: `pending-${index}`,
+      name: file.name,
+      size: file.size,
+      uploadedByName: "",
+      uploadedAt: new Date().toISOString()
+    }, {
+      pending: true,
+      removable: true,
+      onRemove: () => {
+        pendingAttachmentFiles = pendingAttachmentFiles.filter((_, currentIndex) => currentIndex !== index);
+        cardModalDirty = true;
+        renderEditAttachments();
+      }
+    }));
+  });
+
+  if (!allCount) {
+    editAttachmentsList.innerHTML = `<div class="attachment-empty-state">Nenhum documento anexado.</div>`;
+  }
+}
+
+function handleEditAttachmentSelection(event) {
+  try {
+    const selected = validateAttachmentFiles(event?.target?.files);
+    selected.forEach(file => {
+      const duplicate = pendingAttachmentFiles.some(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
+      if (!duplicate) pendingAttachmentFiles.push(file);
+    });
+    if (selected.length) cardModalDirty = true;
+    renderEditAttachments();
+  } catch (error) {
+    alert(error.message || "Não foi possível selecionar os arquivos.");
+  } finally {
+    if (event?.target) event.target.value = "";
+  }
+}
+
+async function persistAttachmentsForCard(cardId, attachments) {
+  const access = getCardAccessEntry(cardId);
+  if (!access) throw new Error("Card não encontrado.");
+  const normalized = normalizeAttachments(attachments, access.card.createdAt);
+  if (access.isShared) {
+    const ok = await saveSharedCardUpdate(cardId, { attachments: normalized });
+    if (!ok) throw new Error("Não foi possível salvar os anexos do card compartilhado.");
+  } else {
+    await updateOwnedCardInCloud(cardId, { attachments: normalized });
+  }
+  access.card.attachments = normalized;
+  return normalized;
+}
+
+async function handleViewAttachmentSelection(event) {
+  const cardId = viewEditCardBtn?.dataset.cardId;
+  const access = cardId ? getCardAccessEntry(cardId) : null;
+  if (!access) return;
+  if (access.columnId === "done") {
+    alert("Este card está concluído e travado. Reabra-o antes de anexar documentos.");
+    if (event?.target) event.target.value = "";
+    return;
+  }
+  if (attachmentActionInProgress) return;
+
+  let uploaded = [];
+  try {
+    const selected = validateAttachmentFiles(event?.target?.files);
+    if (!selected.length) return;
+    attachmentActionInProgress = true;
+    if (viewSelectAttachmentBtn) {
+      viewSelectAttachmentBtn.disabled = true;
+      viewSelectAttachmentBtn.textContent = "Enviando...";
+    }
+    uploaded = await uploadAttachmentFiles(cardId, selected);
+    const nextAttachments = [...normalizeAttachments(access.card.attachments || []), ...uploaded];
+    await persistAttachmentsForCard(cardId, nextAttachments);
+    renderBoard();
+    openViewCardModal(cardId);
+  } catch (error) {
+    if (uploaded.length) await removeAttachmentObjects(uploaded.map(item => item.path), { silent: true });
+    console.error("Erro ao enviar anexos:", error);
+    alert(`Não foi possível anexar os documentos.\n\nMotivo: ${formatCloudError(error)}`);
+  } finally {
+    attachmentActionInProgress = false;
+    if (viewSelectAttachmentBtn) {
+      viewSelectAttachmentBtn.disabled = false;
+      viewSelectAttachmentBtn.textContent = "📎 Anexar documentos";
+    }
+    if (event?.target) event.target.value = "";
+  }
+}
+
+async function removeAttachmentFromView(cardId, attachment) {
+  const access = getCardAccessEntry(cardId);
+  if (!access || !canRemoveAttachment(attachment, access)) return;
+  const confirmed = confirm(`Deseja remover o anexo “${attachment.name}”?`);
+  if (!confirmed) return;
+  try {
+    const nextAttachments = normalizeAttachments(access.card.attachments || []).filter(item => item.id !== attachment.id);
+    await persistAttachmentsForCard(cardId, nextAttachments);
+    await removeAttachmentObjects([attachment.path]);
+    renderBoard();
+    openViewCardModal(cardId);
+  } catch (error) {
+    console.error("Erro ao remover anexo:", error);
+    alert(`Não foi possível remover o anexo.\n\nMotivo: ${formatCloudError(error)}`);
+  }
+}
+
+function renderViewAttachments(card, columnId) {
+  if (!viewAttachmentsList) return;
+  const attachments = normalizeAttachments(card.attachments || [], card.createdAt);
+  const access = getCardAccessEntry(card.id);
+  const isCompleted = columnId === "done";
+  viewAttachmentsCounter.textContent = String(attachments.length);
+  viewAttachmentsList.innerHTML = "";
+  viewAttachmentUploadRow?.classList.toggle("hidden", isCompleted);
+  if (viewSelectAttachmentBtn) viewSelectAttachmentBtn.disabled = isCompleted;
+
+  attachments.forEach(attachment => {
+    viewAttachmentsList.appendChild(createAttachmentRow(attachment, {
+      removable: !isCompleted && canRemoveAttachment(attachment, access),
+      onRemove: () => removeAttachmentFromView(card.id, attachment)
+    }));
+  });
+  if (!attachments.length) {
+    viewAttachmentsList.innerHTML = `<div class="attachment-empty-state">Nenhum documento anexado.</div>`;
+  }
+}
+
+// ============================================================
 // LOCAL STATE
 // ============================================================
 function safeGetItem(_key) { return null; }
@@ -1273,6 +1667,7 @@ function migrateOldData() {
         participants: normalizeParticipants(Array.isArray(card.participants) ? card.participants : [], card.createdAt),
         checklist: normalizeChecklistItems(Array.isArray(card.checklist) ? card.checklist : [], card.createdAt),
         comments: normalizeComments(Array.isArray(card.comments) ? card.comments : [], card.createdAt),
+        attachments: normalizeAttachments(Array.isArray(card.attachments) ? card.attachments : [], card.createdAt),
         createdAt: card.createdAt || new Date().toISOString(),
         completedAt: card.completedAt || null,
         completedBy: card.completedBy || null,
@@ -1414,7 +1809,8 @@ function renderColumn(columnId, cards, isShared = false) {
       ...(card.labels || []),
       ...normalizeParticipants(card.participants || []).map(p => `${participantDisplayName(p)} ${participantEmail(p)}`),
       ...(card.comments || []).map(c => c.text),
-      ...(card.checklist || []).map(i => i.text)
+      ...(card.checklist || []).map(i => i.text),
+      ...normalizeAttachments(card.attachments || []).map(a => a.name)
     ].join(" ").toLowerCase();
     return searchText.includes(query);
   });
@@ -1455,9 +1851,9 @@ function renderColumn(columnId, cards, isShared = false) {
       </div>` : "";
 
     const commentsCount = (card.comments || []).length;
+    const attachmentsCount = normalizeAttachments(card.attachments || []).length;
     const participants  = normalizeParticipants(card.participants || []);
-    const participantsHtml = participants.length
-      ? `<div class="card-participants">${participants.slice(0, 3).map(p => `<span class="participant-chip">${escapeHtml(participantDisplayName(p))}</span>`).join("")}${participants.length > 3 ? `<span class="participant-chip participant-chip-more">+${participants.length - 3}</span>` : ""}</div>` : "";
+    const participantsHtml = renderParticipantAvatarStack(participants, 5);
 
     const sharedBadge = isShared ? `<span class="card-shared-badge">🤝 Compartilhado</span>` : "";
     const completedBadge = isCompleted ? `<span class="card-status-badge completed">🔒 Concluído e travado</span>` : "";
@@ -1472,11 +1868,16 @@ function renderColumn(columnId, cards, isShared = false) {
       ${labelsHtml ? `<div class="card-labels">${labelsHtml}</div>` : ""}
       ${meta.length ? `<div class="card-meta">${meta.join("")}</div>` : ""}
       ${checkHtml}
-      ${participantsHtml}
-      <div class="card-comments-row">
-        <span class="card-comments-info">💬 ${commentsCount} comentário(s)</span>
-        <div class="card-actions">
-          <button class="btn btn-soft btn-sm edit-card-btn" type="button">${isCompleted ? "Visualizar" : (isShared ? "Editar (participante)" : "Editar")}</button>
+      <div class="card-comments-row card-footer-row">
+        <div class="card-activity-summary">
+          <span class="card-comments-info">💬 ${commentsCount} comentário(s)</span>
+          ${attachmentsCount ? `<span class="card-attachments-info">📎 ${attachmentsCount} anexo(s)</span>` : ""}
+        </div>
+        <div class="card-footer-actions">
+          ${participantsHtml}
+          <div class="card-actions">
+            <button class="btn btn-soft btn-sm edit-card-btn" type="button">${isCompleted ? "Visualizar" : (isShared ? "Editar (participante)" : "Editar")}</button>
+          </div>
         </div>
       </div>`;
 
@@ -1573,8 +1974,12 @@ async function handleDeleteProject() {
   if (!ok) return;
   const projectsSnapshot = clone(state.projects);
   const currentProjectSnapshot = currentProjectId;
+  const attachmentPaths = Object.values(project.columns || {}).flatMap(cards =>
+    (cards || []).flatMap(card => normalizeAttachments(card.attachments || []).map(item => item.path))
+  );
   try {
     await deleteProjectFromCloud(project.id);
+    if (attachmentPaths.length) await removeAttachmentObjects(attachmentPaths);
     state.projects = state.projects.filter(p => p.id !== project.id);
     currentProjectId = state.projects[0]?.id || null;
     saveState(); renderProjects(); renderBoard();
@@ -1643,6 +2048,9 @@ function openCardModal(mode, columnId, cardId = null) {
   currentEditingCardId = null;
   tempChecklist        = [];
   tempComments         = [];
+  tempAttachments      = [];
+  pendingAttachmentFiles = [];
+  removedAttachmentPaths = new Set();
   tempParticipants     = [];
   participantSearchResults = [];
 
@@ -1691,6 +2099,7 @@ function openCardModal(mode, columnId, cardId = null) {
     }
     tempChecklist = clone(found.card.checklist || []);
     tempComments  = clone(found.card.comments  || []);
+    tempAttachments = normalizeAttachments(clone(found.card.attachments || []), found.card.createdAt);
   }
 
   // Show participant notice if shared and a compact status notice for reopened cards.
@@ -1699,6 +2108,7 @@ function openCardModal(mode, columnId, cardId = null) {
 
   renderSelectedParticipants();
   renderParticipantSearchResults();
+  renderEditAttachments();
   renderEditChecklist();
   renderEditComments();
   openModal(cardModalOverlay);
@@ -1730,7 +2140,7 @@ function injectParticipantNotice(isParticipant) {
   const notice = document.createElement("div");
   notice.id = "participant-notice-inline";
   notice.className = "participant-notice";
-  notice.innerHTML = `<span>🤝</span><span><strong>Modo Participante</strong> — você pode editar título, descrição, checklist e comentários. Para mover o card, use o botão "Ver" e depois "Mover para".</span>`;
+  notice.innerHTML = `<span>🤝</span><span><strong>Modo Participante</strong> — você pode editar título, descrição, checklist, comentários e anexar documentos. Para mover o card, use o botão "Ver" e depois "Mover para".</span>`;
   const modalBody = cardModalOverlay.querySelector(".modal-body");
   modalBody.insertBefore(notice, modalBody.firstChild);
 }
@@ -1742,7 +2152,12 @@ function closeCardModal(force = false) {
   }
   participantSearchResults = [];
   tempParticipants = [];
+  tempAttachments = [];
+  pendingAttachmentFiles = [];
+  removedAttachmentPaths = new Set();
+  if (cardAttachmentInput) cardAttachmentInput.value = "";
   renderParticipantSearchResults();
+  renderEditAttachments();
   document.getElementById("edit-reopened-notice")?.remove();
   setCardModalVisualState(cardModalOverlay);
   cardModalDirty = false;
@@ -1758,7 +2173,7 @@ async function handleSaveCard() {
     cardSaveInProgress = true;
     saveCardBtn.disabled = true;
     const originalText = saveCardBtn.textContent;
-    saveCardBtn.textContent = "Salvando...";
+    saveCardBtn.textContent = pendingAttachmentFiles.length ? "Enviando anexos..." : "Salvando...";
     try {
       const saved = await handleSharedCardSave(currentEditingCardId);
       if (saved) cardModalDirty = false;
@@ -1775,6 +2190,8 @@ async function handleSaveCard() {
   const project = getCurrentProject();
   if (!project) return;
 
+  const isEditing = Boolean(currentEditingCardId);
+  const previousCard = isEditing ? findCard(currentEditingCardId)?.card : null;
   const cardData = {
     id: currentEditingCardId || uid(), title,
     description: cardDescInput.value.trim(),
@@ -1784,23 +2201,32 @@ async function handleSaveCard() {
     participants: normalizeParticipants(clone(tempParticipants)),
     checklist: normalizeChecklistItems(clone(tempChecklist)),
     comments: normalizeComments(clone(tempComments)),
-    createdAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.createdAt || new Date().toISOString()) : new Date().toISOString(),
-    completedAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.completedAt || null) : null,
-    completedBy: currentEditingCardId ? (findCard(currentEditingCardId)?.card.completedBy || null) : null,
-    reopenedAt: currentEditingCardId ? (findCard(currentEditingCardId)?.card.reopenedAt || null) : null,
-    reopenedBy: currentEditingCardId ? (findCard(currentEditingCardId)?.card.reopenedBy || null) : null,
-    reopenedCount: currentEditingCardId ? Number(findCard(currentEditingCardId)?.card.reopenedCount || 0) : 0,
-    isReopened: currentEditingCardId ? Boolean(findCard(currentEditingCardId)?.card.isReopened) : false
+    attachments: normalizeAttachments(clone(tempAttachments)),
+    createdAt: previousCard?.createdAt || new Date().toISOString(),
+    completedAt: previousCard?.completedAt || null,
+    completedBy: previousCard?.completedBy || null,
+    reopenedAt: previousCard?.reopenedAt || null,
+    reopenedBy: previousCard?.reopenedBy || null,
+    reopenedCount: Number(previousCard?.reopenedCount || 0),
+    isReopened: Boolean(previousCard?.isReopened)
   };
 
   const columnsSnapshot = clone(project.columns);
   cardSaveInProgress = true;
   saveCardBtn.disabled = true;
   const originalText = saveCardBtn.textContent;
-  saveCardBtn.textContent = "Salvando...";
+  saveCardBtn.textContent = pendingAttachmentFiles.length ? "Enviando anexos..." : "Salvando...";
+  let uploaded = [];
+  let createdCardPersisted = false;
 
   try {
-    if (currentEditingCardId) {
+    // Cards existentes já podem receber o upload antes do update final.
+    if (isEditing && pendingAttachmentFiles.length) {
+      uploaded = await uploadAttachmentFiles(cardData.id, pendingAttachmentFiles);
+      cardData.attachments = normalizeAttachments([...cardData.attachments, ...uploaded], cardData.createdAt);
+    }
+
+    if (isEditing) {
       const found = findCard(currentEditingCardId);
       if (!found) throw new Error("O card não foi encontrado no projeto atual.");
       project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== currentEditingCardId);
@@ -1812,18 +2238,35 @@ async function handleSaveCard() {
     await persistProjectToCloud(project);
     const targetPosition = project.columns[currentTargetColumn].findIndex(card => card.id === cardData.id);
     await persistCardToCloud(cardData, project.id, currentTargetColumn, targetPosition);
-    await persistProjectCardsOrder(project);
+    createdCardPersisted = !isEditing;
 
+    // Um card novo precisa existir no banco antes de o Storage aceitar o arquivo.
+    if (!isEditing && pendingAttachmentFiles.length) {
+      uploaded = await uploadAttachmentFiles(cardData.id, pendingAttachmentFiles);
+      cardData.attachments = normalizeAttachments([...cardData.attachments, ...uploaded], cardData.createdAt);
+      await updateOwnedCardInCloud(cardData.id, { attachments: cardData.attachments });
+    }
+
+    await persistProjectCardsOrder(project);
+    if (removedAttachmentPaths.size) {
+      await removeAttachmentObjects([...removedAttachmentPaths]);
+    }
+
+    pendingAttachmentFiles = [];
+    removedAttachmentPaths = new Set();
     saveState();
     renderBoard();
     cardModalDirty = false;
     closeCardModal(true);
   } catch (error) {
+    if (uploaded.length) await removeAttachmentObjects(uploaded.map(item => item.path), { silent: true });
+    if (!isEditing && createdCardPersisted) {
+      try { await deleteCardFromCloud(cardData.id); }
+      catch (rollbackError) { console.error("Não foi possível desfazer o card após falha no upload:", rollbackError); }
+    }
     project.columns = columnsSnapshot;
     console.error("Erro ao salvar card:", error);
-    alert(`Não foi possível salvar o card online.
-
-Motivo: ${formatCloudError(error)}`);
+    alert(`Não foi possível salvar o card online.\n\nMotivo: ${formatCloudError(error)}`);
   } finally {
     cardSaveInProgress = false;
     saveCardBtn.disabled = false;
@@ -1850,6 +2293,7 @@ async function handleDeleteCard() {
 
   const columnsSnapshot = clone(project.columns);
   const deletingId = currentEditingCardId;
+  const attachmentPaths = normalizeAttachments(found.card.attachments || []).map(item => item.path);
   cardSaveInProgress = true;
   deleteCardBtn.disabled = true;
   const originalText = deleteCardBtn.textContent;
@@ -1857,6 +2301,7 @@ async function handleDeleteCard() {
 
   try {
     await deleteCardFromCloud(deletingId);
+    if (attachmentPaths.length) await removeAttachmentObjects(attachmentPaths);
     project.columns[found.columnId] = project.columns[found.columnId].filter(c => c.id !== deletingId);
     // Não é necessário renumerar as posições: lacunas não afetam a ordenação.
     saveState();
@@ -1969,18 +2414,25 @@ function openViewCardModal(cardId) {
   viewCardParticipants.innerHTML = "";
   if (participants.length) {
     participants.forEach(p => {
-      const chip = document.createElement("span");
-      chip.className = "participant-chip participant-chip-dated";
-      chip.innerHTML = `<strong>${escapeHtml(participantDisplayName(p))}</strong><small>Incluído em ${escapeHtml(formatDateTime(p.added_at || card.createdAt))}</small>`;
+      const participant = document.createElement(p.user_id && supabase ? "button" : "div");
+      if (participant.tagName === "BUTTON") participant.type = "button";
+      participant.className = "view-participant-item";
+      participant.innerHTML = `
+        ${participantAvatarHtml(p, "view-participant-avatar")}
+        <span class="view-participant-copy">
+          <strong>${escapeHtml(participantDisplayName(p))}</strong>
+          <small>${escapeHtml(participantEmail(p) || "Participante")} · Incluído em ${escapeHtml(formatDateTime(p.added_at || card.createdAt))}</small>
+        </span>`;
       if (p.user_id && supabase) {
-        chip.classList.add("is-clickable-bio");
-        chip.title = "Ver perfil";
-        chip.style.cursor = "pointer";
-        chip.addEventListener("click", (e) => { e.stopPropagation(); kqOpenBio(p.user_id); });
+        participant.classList.add("is-clickable-bio");
+        participant.title = "Ver perfil";
+        participant.addEventListener("click", (e) => { e.stopPropagation(); kqOpenBio(p.user_id); });
       }
-      viewCardParticipants.appendChild(chip);
+      viewCardParticipants.appendChild(participant);
     });
   } else { viewCardParticipants.innerHTML = `<div class="empty-state">Nenhum participante.</div>`; }
+
+  renderViewAttachments(card, columnId);
 
   // Checklist
   const checklist  = card.checklist || [];
@@ -2072,7 +2524,7 @@ function injectViewParticipantNotice(isParticipant, isCompleted = false) {
   notice.style.marginBottom = "12px";
   notice.innerHTML = isCompleted
     ? `<span>🔒</span><span><strong>Você é participante</strong> deste card concluído. O conteúdo está travado até que o card seja reaberto.</span>`
-    : `<span>🤝</span><span><strong>Você é participante</strong> deste card. Pode marcar checklist, adicionar comentários e mover o card.</span>`;
+    : `<span>🤝</span><span><strong>Você é participante</strong> deste card. Pode marcar checklist, adicionar comentários, anexar documentos e mover o card.</span>`;
   const modalBody = viewCardModalOverlay.querySelector(".modal-body");
   modalBody.insertBefore(notice, modalBody.firstChild);
 }
@@ -2144,6 +2596,7 @@ function injectMoveSection(cardId, currentCol, isParticipant, isCompleted = fals
 }
 function closeViewCardModal() {
   viewNewCommentInput.value = "";
+  if (viewAttachmentInput) viewAttachmentInput.value = "";
   setCardModalVisualState(viewCardModalOverlay);
   closeModal(viewCardModalOverlay);
 }

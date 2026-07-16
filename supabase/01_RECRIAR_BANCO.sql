@@ -1,6 +1,6 @@
 /*
   KANBAN QUEST — RECRIAÇÃO COMPLETA DO BANCO SUPABASE
-  Versão: 2026-07-15 — conclusão, trava, reabertura e notificações
+  Versão: 2026-07-16 — conclusão, reabertura, avatares e anexos online
 
   ATENÇÃO: este script APAGA e recria as tabelas do Kanban Quest no schema public.
   Use em um projeto novo/vazio ou quando você realmente quiser reiniciar o banco.
@@ -22,6 +22,9 @@ drop function if exists public.is_project_participant(text) cascade;
 drop function if exists public.enforce_card_update_permissions() cascade;
 drop function if exists public.enforce_message_update_permissions() cascade;
 drop function if exists public.transition_card_status(text, text) cascade;
+drop function if exists public.can_access_card_attachment(text) cascade;
+drop function if exists public.can_edit_card_attachment(text) cascade;
+drop function if exists public.is_card_owner(text) cascade;
 
 drop table if exists public.notification_reads cascade;
 drop table if exists public.notifications cascade;
@@ -90,6 +93,8 @@ create table public.cards (
     check (jsonb_typeof(checklist) = 'array'),
   comments jsonb not null default '[]'::jsonb
     check (jsonb_typeof(comments) = 'array'),
+  attachments jsonb not null default '[]'::jsonb
+    constraint cards_attachments_is_array check (jsonb_typeof(attachments) = 'array'),
   completed_at timestamptz,
   completed_by uuid references auth.users(id) on delete set null,
   reopened_at timestamptz,
@@ -295,6 +300,49 @@ as $$
   );
 $$;
 
+-- Funções usadas pelas políticas do Supabase Storage.
+create or replace function public.is_card_owner(p_card_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.cards c
+    where c.id = p_card_id and c.owner_id = auth.uid()
+  );
+$$;
+
+create or replace function public.can_access_card_attachment(p_card_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.cards c
+    where c.id = p_card_id
+      and (c.owner_id = auth.uid() or public.is_card_participant(c.id))
+  );
+$$;
+
+create or replace function public.can_edit_card_attachment(p_card_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.cards c
+    where c.id = p_card_id
+      and c.column_key <> 'done'
+      and (c.owner_id = auth.uid() or public.is_card_participant(c.id))
+  );
+$$;
+
 -- Trava cards concluídos e exige a função de transição para concluir/reabrir.
 create or replace function public.enforce_card_update_permissions()
 returns trigger
@@ -348,9 +396,43 @@ begin
        or new.labels is distinct from old.labels
        or new.participants is distinct from old.participants
        or new.created_at is distinct from old.created_at then
-      raise exception 'Participantes só podem editar título, descrição, checklist e comentários.'
+      raise exception 'Participantes só podem editar título, descrição, checklist, comentários e anexos.'
         using errcode = '42501';
     end if;
+
+    -- Um participante só pode acrescentar, alterar ou remover anexos enviados
+    -- por ele próprio. Anexos de outros usuários permanecem protegidos.
+    if new.attachments is distinct from old.attachments then
+      if exists (
+        select 1
+        from jsonb_array_elements(coalesce(new.attachments, '[]'::jsonb)) n
+        where not exists (
+          select 1
+          from jsonb_array_elements(coalesce(old.attachments, '[]'::jsonb)) o
+          where o ->> 'id' = n ->> 'id'
+        )
+        and coalesce(n ->> 'uploadedBy', n ->> 'uploaded_by', '') <> auth.uid()::text
+      ) then
+        raise exception 'Participantes só podem adicionar anexos em seu próprio nome.'
+          using errcode = '42501';
+      end if;
+
+      if exists (
+        select 1
+        from jsonb_array_elements(coalesce(old.attachments, '[]'::jsonb)) o
+        where coalesce(o ->> 'uploadedBy', o ->> 'uploaded_by', '') <> auth.uid()::text
+          and not exists (
+            select 1
+            from jsonb_array_elements(coalesce(new.attachments, '[]'::jsonb)) n
+            where n ->> 'id' = o ->> 'id'
+              and n = o
+          )
+      ) then
+        raise exception 'Participantes não podem alterar ou remover anexos enviados por outras pessoas.'
+          using errcode = '42501';
+      end if;
+    end if;
+
     return new;
   end if;
 
@@ -761,6 +843,64 @@ to authenticated
 using (user_id = (select auth.uid()));
 
 -- =============================================================
+-- STORAGE PRIVADO PARA ANEXOS DOS CARDS
+-- Caminho: card_id/owner_id/uploader_id/arquivo
+-- =============================================================
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('card-attachments', 'card-attachments', false, 15728640)
+on conflict (id) do update set
+  public = false,
+  file_size_limit = 15728640;
+
+drop policy if exists card_attachments_select on storage.objects;
+create policy card_attachments_select
+on storage.objects for select
+to authenticated
+using (
+  bucket_id = 'card-attachments'
+  and public.can_access_card_attachment((storage.foldername(name))[1])
+);
+
+drop policy if exists card_attachments_insert on storage.objects;
+create policy card_attachments_insert
+on storage.objects for insert
+to authenticated
+with check (
+  bucket_id = 'card-attachments'
+  and public.can_edit_card_attachment((storage.foldername(name))[1])
+  and (storage.foldername(name))[2] = (
+    select c.owner_id::text
+    from public.cards c
+    where c.id = (storage.foldername(name))[1]
+  )
+  and (storage.foldername(name))[3] = (select auth.uid())::text
+);
+
+drop policy if exists card_attachments_delete on storage.objects;
+create policy card_attachments_delete
+on storage.objects for delete
+to authenticated
+using (
+  bucket_id = 'card-attachments'
+  and (
+    (
+      public.can_edit_card_attachment((storage.foldername(name))[1])
+      and (
+        public.is_card_owner((storage.foldername(name))[1])
+        or (storage.foldername(name))[3] = (select auth.uid())::text
+      )
+    )
+    or (
+      (storage.foldername(name))[2] = (select auth.uid())::text
+      and not exists (
+        select 1 from public.cards c
+        where c.id = (storage.foldername(name))[1]
+      )
+    )
+  )
+);
+
+-- =============================================================
 -- PERMISSÕES DA DATA API
 -- =============================================================
 revoke all on table public.profiles from anon;
@@ -789,6 +929,15 @@ grant execute on function public.is_card_participant(text) to authenticated;
 revoke all on function public.is_project_participant(text) from public, anon;
 grant execute on function public.is_project_participant(text) to authenticated;
 
+revoke all on function public.is_card_owner(text) from public, anon;
+grant execute on function public.is_card_owner(text) to authenticated;
+
+revoke all on function public.can_access_card_attachment(text) from public, anon;
+grant execute on function public.can_access_card_attachment(text) to authenticated;
+
+revoke all on function public.can_edit_card_attachment(text) from public, anon;
+grant execute on function public.can_edit_card_attachment(text) to authenticated;
+
 revoke all on function public.transition_card_status(text, text) from public, anon;
 grant execute on function public.transition_card_status(text, text) to authenticated;
 
@@ -809,5 +958,5 @@ $$;
 
 commit;
 
--- Resultado esperado: 7 tabelas, RLS habilitado, cards concluídos travados e notificações online.
-select 'Kanban Quest instalado com sucesso.' as resultado;
+-- Resultado esperado: 7 tabelas, RLS habilitado, cards concluídos travados, notificações e anexos online.
+select 'Kanban Quest instalado com sucesso, com anexos online habilitados.' as resultado;
