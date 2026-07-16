@@ -61,3 +61,16 @@ ATENCAO_ANTES_DE_PUBLICAR.txt
 VERSAO_E_ALTERACOES.txt
 supabase/
 ```
+
+---
+
+## Atualização visual — cards rosa em gradiente
+
+Esta versão utiliza as duas cores da referência fornecida:
+
+- **Card reaberto:** base `#E3868F`, com gradiente rosa mais intenso.
+- **Card normal:** base `#FFD4D5`, com gradiente rosa claro.
+
+Os fundos possuem transparência moderada e os textos brancos receberam contorno preto mínimo para melhorar a leitura. A faixa vermelha e a marca d'água continuam exclusivas dos cards reabertos.
+
+Esta atualização não exige nenhuma alteração no Supabase.

@@ -1,17 +1,17 @@
-KANBAN QUEST — OWNER VISÍVEL E CARD REABERTO NEUTRO
+KANBAN QUEST — CARDS ROSA EM GRADIENTE
 Versão: 2026-07-16
 
 ALTERAÇÕES DESTA VERSÃO
-- Mantido o visual escuro original aprovado.
-- Avatar do responsável pelo card sempre exibido, mesmo quando não há participantes adicionais.
-- Responsável aparece primeiro na pilha externa de avatares.
-- Dentro do card, o responsável aparece com avatar, nome, e-mail e selo “Responsável”.
-- Em cards compartilhados, o perfil e o avatar do dono são carregados online da tabela profiles.
-- Números das colunas Pendente, Em Progresso e Concluído agora usam texto branco sobre a bolinha vinho.
-- Cards reabertos voltaram a usar a mesma cor dos cards normais.
-- Mantidas a marca d’água REABERTO, a faixa vermelha, o badge e a data de reabertura.
-- Mantidos avatares de participantes, anexos online, trava de conclusão e notificações.
+- Mantido todo o funcionamento da versão anterior.
+- Cards reabertos passam a usar a paleta rosa intensa #E3868F, baseada na imagem de referência.
+- Cards normais passam a usar a paleta rosa clara #FFD4D5, baseada na imagem de referência.
+- As duas paletas receberam gradientes suaves e transparência moderada, sem efeito excessivo.
+- Cards reabertos continuam com faixa vermelha, marca d’água REABERTO, badge e data de reabertura.
+- Textos brancos dentro dos cards receberam um contorno preto mínimo e sombra curta para melhorar a leitura.
+- Chips, etiquetas, checklist, progresso e avatares foram harmonizados com as novas cores.
+- Cards concluídos continuam com o visual travado já existente.
+- Mantidos avatares do owner e participantes, anexos online, notificações e integração Supabase.
 
 SUPABASE
-- Esta atualização não exige um novo SQL.
-- O arquivo 05_ADICIONAR_AVATARES_E_ANEXOS.sql continua incluído apenas para reinstalação ou ambientes que ainda não receberam a atualização anterior.
+- Esta atualização é exclusivamente visual.
+- Não é necessário executar novo SQL.
