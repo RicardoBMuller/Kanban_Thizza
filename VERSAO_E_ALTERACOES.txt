@@ -1,19 +1,10 @@
-KANBAN QUEST — VERSÃO 2026.07.15-status-lock-3
+KANBAN QUEST — VERSÃO FCC DARK 2026-07-15
 
-IMPLEMENTADO
-- Modal de confirmação para concluir cards.
-- Card concluído totalmente travado no frontend e no banco.
-- Opção de reabertura com modal de confirmação.
-- Notificações persistentes para todos os participantes na conclusão e reabertura.
-- Realtime para novas notificações.
-- Card reaberto com destaque vermelho/salmão e marca d'água REABERTO.
-- Datas de inclusão em projetos, cards, participantes, checklists e comentários.
-- Migração não destrutiva para bancos já instalados.
-
-ORDEM PARA O BANCO ATUAL
-1. Executar supabase/04_ATUALIZAR_CONCLUSAO_REABERTURA.sql
-2. Executar supabase/02_VERIFICAR_INSTALACAO.sql
-3. Publicar os arquivos do frontend no GitHub Pages
-
-ATENÇÃO
-O arquivo 01_RECRIAR_BANCO.sql apaga e recria as tabelas. No banco atual, use o arquivo 04.
+Alterações desta versão:
+- Tema claro removido; o aplicativo utiliza somente o tema escuro institucional.
+- Tema escuro clareado para melhorar conforto visual e contraste.
+- Paleta adaptada à identidade visual da Fundação Carlos Chagas: vinho, magenta e ameixa.
+- Correção de textos escuros no modal de visualização, checklist, participantes e seletor de coluna.
+- Cards externos convertidos para superfícies escuras com tipografia clara.
+- Destaques de conclusão e reabertura preservados.
+- Nenhuma alteração no banco de dados é necessária para esta atualização visual.

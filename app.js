@@ -7,13 +7,12 @@ const SUPABASE_URL = String(KANBAN_CONFIG.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(
   KANBAN_CONFIG.SUPABASE_PUBLISHABLE_KEY || KANBAN_CONFIG.SUPABASE_ANON_KEY || ""
 ).trim();
-const APP_VERSION = "2026.07.15-status-lock-3";
+const APP_VERSION = "2026.07.15-fcc-dark-1";
 
 // ============================================================
 // CONSTANTES
 // ============================================================
 const STORAGE_KEY              = "kanban_fcc_pro_v5";
-const THEME_KEY                = "kanban_fcc_theme";
 const SIDEBAR_KEY              = "kanban_fcc_sidebar_collapsed";
 const LOGIN_WELCOME_PENDING_KEY = "kanban_login_welcome_pending";
 
@@ -71,8 +70,6 @@ const countTodo         = document.getElementById("count-todo");
 const countDoing        = document.getElementById("count-doing");
 const countDone         = document.getElementById("count-done");
 const newProjectBtn     = document.getElementById("newProjectBtn");
-const lightBtn          = document.getElementById("lightBtn");
-const darkBtn           = document.getElementById("darkBtn");
 const loginOpenBtn      = document.getElementById("loginOpenBtn");
 const profileBtn        = document.getElementById("profileBtn");
 const logoutBtn         = document.getElementById("logoutBtn");
@@ -245,8 +242,6 @@ function bindEvents() {
   on(newChecklistItemInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleAddChecklistItem(); }});
   on(newCommentInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleAddComment(); }});
   on(searchInput, "input", renderBoard);
-  on(lightBtn, "click", () => setTheme("light"));
-  on(darkBtn, "click", () => setTheme("dark"));
   on(sidebarToggleBtn, "click", e => { e.stopPropagation(); toggleSidebar(); });
   window.addEventListener("resize", handleResponsiveLayout);
   on(mainArea, "click", () => { if (isMobileViewport() && appShell.classList.contains("mobile-sidebar-open")) closeMobileSidebar(); });
@@ -2323,15 +2318,12 @@ function closeModal(overlay) {
 // ============================================================
 // THEME & SIDEBAR
 // ============================================================
-function setTheme(theme) { document.documentElement.setAttribute("data-theme", theme); updateThemeButtons(theme); }
-function applySavedTheme() { const t = document.documentElement.getAttribute("data-theme") || "dark"; document.documentElement.setAttribute("data-theme", t); updateThemeButtons(t); }
-function updateThemeButtons(theme) {
-  lightBtn.classList.toggle("active", theme === "light");
-  darkBtn.classList.toggle("active", theme === "dark");
-  // Update the floating theme FAB icon
-  const fabIcon = document.getElementById("themeToggleIcon");
-  if (fabIcon) fabIcon.textContent = theme === "dark" ? "☀️" : "🌙";
+function setTheme() {
+  // Tema institucional único: o aplicativo permanece sempre no modo escuro FCC.
+  document.documentElement.setAttribute("data-theme", "dark");
 }
+function applySavedTheme() { setTheme(); }
+function updateThemeButtons() { setTheme(); }
 
 function isMobileViewport() { return window.innerWidth <= 980; }
 function openMobileSidebar()  { appShell.classList.add("mobile-sidebar-open"); appShell.classList.remove("sidebar-collapsed"); updateSidebarToggleButton(false); }
@@ -2668,7 +2660,6 @@ const kqSearchIn    = document.getElementById("chatSearchInput"); // in left sid
 const kqSearchWrap  = document.getElementById("chatSearchWrap");
 const kqMainHeader  = document.getElementById("chatMainHeader");
 const kqSidebarBadge = document.getElementById("sidebarUnreadBadge");
-const themeToggleBtn = document.getElementById("themeToggleBtn");
 chatRuntimeReady = true;
 
 // Dropdown is a child of kqSearchWrap (absolute-positioned, no overflow issues)
@@ -2685,18 +2676,6 @@ function kqGetOrCreateDropdown() {
   return kqDropdown;
 }
 
-// ── Theme FAB ────────────────────────────────────────────────────
-if (themeToggleBtn) {
-  // Set initial icon
-  const savedTheme = document.documentElement.getAttribute("data-theme") || "dark";
-  const fabIcon = document.getElementById("themeToggleIcon");
-  if (fabIcon) fabIcon.textContent = savedTheme === "dark" ? "☀️" : "🌙";
-
-  themeToggleBtn.addEventListener("click", () => {
-    const current = document.documentElement.getAttribute("data-theme") || "dark";
-    setTheme(current === "dark" ? "light" : "dark");
-  });
-}
 
 // ── Events ───────────────────────────────────────────────────────
 if (kqToggleBtn) kqToggleBtn.addEventListener("click", kqToggleChat);

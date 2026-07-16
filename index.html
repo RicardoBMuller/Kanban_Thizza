@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kanban Quest</title>
+  <title>Kanban Quest | Fundação Carlos Chagas</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -13,10 +13,10 @@
   <div id="introSplash" class="intro-splash" aria-hidden="true">
     <div class="intro-splash-glow"></div>
     <div class="intro-splash-card">
-      <div class="intro-splash-mark">KQ</div>
+      <div class="intro-splash-mark">FCC</div>
       <div class="intro-splash-copy">
         <strong>Kanban Quest</strong>
-        <span>Organize o seu dia!</span>
+        <span>Fundação Carlos Chagas</span>
       </div>
     </div>
   </div>
@@ -25,10 +25,10 @@
     <aside class="sidebar">
       <div class="brand-card">
         <img id="brandAvatar" class="brand-avatar hidden" alt="Avatar do usuário" />
-        <div id="brandMark" class="brand-mark">KQ</div>
+        <div id="brandMark" class="brand-mark">FCC</div>
         <div class="brand-copy">
           <h1 id="brandUserName">Kanban Quest</h1>
-          <p>Organize o seu dia!</p>
+          <p>Fundação Carlos Chagas</p>
         </div>
       </div>
 
@@ -82,9 +82,6 @@
         <div id="chatConvList" class="sidebar-conv-list"></div>
       </section>
 
-      <!-- Hidden theme buttons kept for JS compat -->
-      <button id="lightBtn" style="display:none" aria-hidden="true"></button>
-      <button id="darkBtn"  style="display:none" aria-hidden="true"></button>
     </aside>
 
     <main class="main-area">
@@ -344,7 +341,7 @@
       </div>
       <div class="modal-body auth-modal-body">
         <div class="auth-brand">
-          <div class="auth-brand-mark">KQ</div>
+          <div class="auth-brand-mark">FCC</div>
           <div>
             <strong>Acesse sua conta</strong>
             <p>Login simples com Google. No primeiro acesso, sua conta já é criada automaticamente.</p>
@@ -378,7 +375,7 @@
       <div class="modal-body profile-modal-body">
         <div class="profile-user-card">
           <img id="profileAvatar" class="profile-avatar hidden" alt="Avatar do usuário" />
-          <div id="profileAvatarFallback" class="profile-avatar-fallback">KQ</div>
+          <div id="profileAvatarFallback" class="profile-avatar-fallback">FCC</div>
           <div class="profile-user-copy">
             <strong id="profileName">Visitante</strong>
             <span id="profileEmail">Faça login para conectar sua conta.</span>
@@ -418,11 +415,6 @@
       </div>
     </div>
   </div>
-
-  <!-- ── Theme FAB — always visible, bottom-right ──────────────── -->
-  <button id="themeToggleBtn" class="theme-fab" type="button" aria-label="Alternar tema" title="Claro / Escuro">
-    <span id="themeToggleIcon">🌙</span>
-  </button>
 
   <!-- ── Floating Chat — only conversation panel, no left sidebar ─ -->
   <div class="chat-widget" id="chatWidget" style="display:none">

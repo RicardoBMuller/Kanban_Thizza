@@ -1,3 +1,10 @@
+
+## Atualização visual FCC (tema único)
+
+Esta versão utiliza somente o tema escuro, em uma tonalidade mais clara e com a paleta vinho/magenta da Fundação Carlos Chagas. O botão de alternância de tema foi removido. Também foram corrigidos os textos que apareciam escuros no modal de visualização do card.
+
+**Esta atualização não exige executar nenhum SQL adicional.** Caso o banco já tenha recebido o arquivo `04_ATUALIZAR_CONCLUSAO_REABERTURA.sql`, basta manter o `config.js` com suas credenciais atuais e substituir os arquivos do GitHub Pages.
+
 # Kanban Quest — pacote completo com conclusão, trava e reabertura
 
 Este pacote contém o frontend completo para o GitHub Pages e os arquivos SQL do Supabase.

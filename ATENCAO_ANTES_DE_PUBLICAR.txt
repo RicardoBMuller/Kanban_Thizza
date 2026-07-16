@@ -1,0 +1,14 @@
+ATENÇÃO — CONFIG.JS
+
+Este pacote contém o arquivo config.js com campos de exemplo.
+Antes de substituir os arquivos no GitHub Pages, faça uma destas opções:
+
+1) Mantenha o config.js que já está funcionando no seu repositório; ou
+2) Preencha no novo config.js a Project URL e a Publishable key do Supabase.
+
+Nunca coloque Secret key, service_role ou senha do banco no GitHub.
+
+ATUALIZAÇÃO DO BANCO
+
+Esta versão altera apenas a interface. Não é necessário executar um novo SQL
+se o arquivo 04_ATUALIZAR_CONCLUSAO_REABERTURA.sql já foi aplicado.
