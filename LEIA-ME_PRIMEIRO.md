@@ -1,3 +1,26 @@
+# Kanban Quest — Tema Institucional Claro FCC
+
+Esta versão substitui o tema escuro por uma interface clara baseada na identidade visual do portal da Fundação Carlos Chagas: azul-grafite na navegação, vinho como cor de destaque e superfícies brancas/cinza-claro.
+
+## Atualização rápida
+
+1. Preserve o seu `config.js` atual, que já está conectado ao Supabase.
+2. Substitua `index.html`, `styles.css`, `app.js` e `.nojekyll` no GitHub Pages.
+3. Não execute nenhum SQL: esta versão altera somente o frontend.
+4. Depois da publicação, pressione `Ctrl + F5`.
+
+## Destaques visuais
+
+- Sidebar azul-grafite com linha vinho institucional.
+- Área de trabalho clara e com padrão geométrico discreto.
+- Colunas e cards brancos com sombras leves.
+- Modais claros, maiores e com contraste reforçado.
+- Card reaberto em rosa-salmão claro, com texto vinho escuro.
+- Card concluído em cinza claro e visualmente travado.
+- Chat, notificações, perfil e login no mesmo sistema visual.
+
+---
+
 
 ## Atualização visual FCC (tema único)
 
