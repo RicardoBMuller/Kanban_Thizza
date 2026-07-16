@@ -1,14 +1,10 @@
-KANBAN QUEST — FCC INSTITUCIONAL CLARO
-Versão: 2026.07.16-fcc-institucional-claro-1
+KANBAN QUEST — FCC VISUAL ORIGINAL RESTAURADO
+Versão: 2026-07-16
 
 ALTERAÇÕES DESTA VERSÃO
-- Tema escuro substituído por identidade institucional clara da Fundação Carlos Chagas.
-- Navegação lateral em azul-grafite, inspirada no cabeçalho do portal FCC.
-- Fundo principal branco/cinza-claro com padrão geométrico discreto.
-- Vinho FCC aplicado somente em ações, destaques e linhas institucionais.
-- Colunas, cards, formulários e modais receberam superfícies claras e alto contraste.
-- Card reaberto passou a usar rosa-salmão claro, sem prejudicar a leitura.
-- Card concluído recebeu acabamento cinza claro e travado.
-- Chat, notificações, login, perfil e menus contextuais foram harmonizados.
-- Tema continua único, sem seletor claro/escuro.
-- Nenhuma alteração de banco de dados é necessária.
+- Restaurado o visual escuro original do Kanban Quest/FCC.
+- Removido o tema institucional claro da versão anterior.
+- Mantidas as correções de legibilidade das fontes.
+- Textos de cards, modais, checklists, comentários, participantes, datas e campos permanecem claros e com alto contraste.
+- Card reaberto continua com destaque salmão discreto, sem prejudicar a leitura.
+- Nenhuma alteração no banco de dados ou no Supabase é necessária.

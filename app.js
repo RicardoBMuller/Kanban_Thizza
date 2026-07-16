@@ -7,7 +7,7 @@ const SUPABASE_URL = String(KANBAN_CONFIG.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(
   KANBAN_CONFIG.SUPABASE_PUBLISHABLE_KEY || KANBAN_CONFIG.SUPABASE_ANON_KEY || ""
 ).trim();
-const APP_VERSION = "2026.07.16-fcc-institucional-claro-1";
+const APP_VERSION = "2026.07.15-fcc-dark-1";
 
 // ============================================================
 // CONSTANTES
@@ -2363,8 +2363,8 @@ function closeModal(overlay) {
 // THEME & SIDEBAR
 // ============================================================
 function setTheme() {
-  // Tema institucional único da Fundação Carlos Chagas.
-  document.documentElement.setAttribute("data-theme", "fcc-light");
+  // Tema institucional único: o aplicativo permanece sempre no modo escuro FCC.
+  document.documentElement.setAttribute("data-theme", "dark");
 }
 function applySavedTheme() { setTheme(); }
 function updateThemeButtons() { setTheme(); }
