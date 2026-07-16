@@ -1,69 +1,21 @@
-# Kanban Quest — Owner sempre visível e card reaberto neutro
+# Kanban Quest — Cards cinza e editor de texto rico
 
-Esta versão mantém o visual escuro original aprovado e incorpora os ajustes solicitados.
+Esta versão mantém a infraestrutura online no Supabase e adiciona um editor completo para descrições e comentários.
 
-## Alterações
+## Publicação
 
-- O avatar do responsável pelo card aparece sempre, mesmo quando ele é a única pessoa vinculada.
-- O responsável aparece primeiro na pilha de avatares fora do card.
-- Dentro do card, o responsável é exibido com avatar, nome, e-mail e selo **Responsável**.
-- Em cards compartilhados, o perfil e o avatar do dono são carregados online pela tabela `profiles` do Supabase.
-- Os números das colunas **Pendente**, **Em Progresso** e **Concluído** usam texto branco sobre a bolinha vinho.
-- Cards reabertos têm a mesma cor dos cards normais.
-- A identificação de reabertura continua visível por meio da faixa vermelha, badge, data e marca d’água **REABERTO**.
-- Avatares de participantes, anexos online, notificações e bloqueio de cards concluídos permanecem ativos.
+1. Preserve o `config.js` que já funciona no seu site.
+2. Extraia o pacote.
+3. Substitua o `config.js` do pacote pelo seu arquivo funcional.
+4. Envie `index.html`, `styles.css`, `app.js`, `config.js` e `.nojekyll` para a raiz do repositório.
+5. Após o deploy, pressione `Ctrl + F5`.
 
-## Supabase
+## Banco de dados
 
-Esta atualização **não exige um novo SQL**.
+Nenhum SQL novo é necessário. O conteúdo formatado é armazenado nos mesmos campos de descrição e comentários já existentes.
 
-Caso você já tenha executado anteriormente:
+## Editor
 
-```text
-supabase/05_ADICIONAR_AVATARES_E_ANEXOS.sql
-```
+A barra de edição oferece formatação semelhante à de um e-mail: títulos, fontes, tamanhos, cores, marca-texto, negrito, itálico, sublinhado, tachado, alinhamento, listas, recuo, links, citações, código, linha horizontal, emoticons, desfazer/refazer e limpeza da formatação.
 
-não precisa executar nada no banco.
-
-O pacote mantém os arquivos SQL completos apenas para reinstalação ou para outro ambiente que ainda não possua anexos e Storage configurados.
-
-> Não execute `01_RECRIAR_BANCO.sql` no banco atual. Esse arquivo apaga e recria a estrutura do projeto.
-
-## Preserve o config.js atual
-
-O `config.js` incluído no pacote contém campos de exemplo. Mantenha o arquivo que já funciona no seu GitHub Pages, com a Project URL e a Publishable key corretas.
-
-Nunca coloque `service_role`, Secret key ou senha do banco no frontend.
-
-## Publicação no GitHub Pages
-
-Substitua na raiz do repositório:
-
-```text
-index.html
-styles.css
-app.js
-.nojekyll
-```
-
-Mantenha o seu `config.js` atual. Depois do deploy, abra o site e pressione `Ctrl + F5` para limpar o cache.
-
-## Estrutura do pacote
-
-```text
-index.html
-styles.css
-app.js
-config.js
-.nojekyll
-LEIA-ME_PRIMEIRO.md
-ATENCAO_ANTES_DE_PUBLICAR.txt
-VERSAO_E_ALTERACOES.txt
-supabase/
-```
-
----
-
-## Atualização visual: cards rosa com alta legibilidade
-
-Esta versão mantém a paleta rosa dos cards, mas troca o texto branco das superfícies claras por vinho profundo. Labels, badges e botões continuam escuros com texto branco. Nenhuma alteração de banco é necessária.
+Use `Ctrl + Enter` para publicar rapidamente um comentário.

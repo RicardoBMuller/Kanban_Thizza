@@ -1,17 +1,35 @@
-KANBAN QUEST — CARDS ROSA COM ALTA LEGIBILIDADE
-Versão: 2026-07-16
+KANBAN QUEST — VERSÃO CINZA + EDITOR DE TEXTO RICO
+Data: 16/07/2026
 
 ALTERAÇÕES DESTA VERSÃO
-- Mantida integralmente a paleta rosa solicitada.
-- Cards normais continuam com rosa claro em gradiente.
-- Cards reabertos continuam com rosa mais intenso, faixa vermelha e marca d'água REABERTO.
-- Removido o texto branco com contorno preto das superfícies claras.
-- Títulos, descrições, datas e informações agora usam vinho profundo com contraste elevado.
-- Chips, checklist e metadados receberam fundo claro translúcido e texto vinho.
-- Labels, badges e botões permanecem em vinho escuro com texto branco.
-- Avatares receberam aro claro e sombra discreta.
-- Mantidos owner, participantes, anexos online, notificações, cards compartilhados e integração Supabase.
 
-SUPABASE
-- Esta atualização é exclusivamente visual.
-- Não é necessário executar novo SQL.
+1. CARDS EM CINZA CLARO/MÉDIO
+- Cards normais e reabertos usam a mesma superfície cinza em gradiente.
+- Textos principais dos cards usam branco e cinza muito claro para boa leitura.
+- Cards reabertos continuam identificados por faixa vermelha, marca d'água e tipografia salmão discreta.
+
+2. DESCRIÇÃO RESPEITANDO A FORMATAÇÃO
+- Parágrafos, quebras de linha, listas, títulos, alinhamentos, citações e blocos de código aparecem também na visualização externa do card.
+- A descrição deixa de ser transformada em uma única linha.
+- Conteúdo extenso possui rolagem interna para preservar o tamanho do quadro.
+
+3. EDITOR COMPLETO DE TEXTO
+- Negrito, itálico, sublinhado e tachado.
+- Subscrito e sobrescrito.
+- Títulos, parágrafos, citação e bloco de código.
+- Fonte e tamanho da fonte.
+- Cor do texto e marca-texto.
+- Alinhamento à esquerda, centro, direita e justificado.
+- Listas numeradas e com marcadores.
+- Recuo e redução de recuo.
+- Links, linha horizontal, desfazer, refazer e limpar formatação.
+- Seletor de emoticons.
+- Ctrl + Enter adiciona comentários.
+
+4. SEGURANÇA
+- O HTML produzido pelo editor é higienizado antes de ser salvo ou exibido.
+- Scripts, iframes e atributos perigosos são removidos.
+
+BANCO DE DADOS
+- Nenhuma alteração de SQL é necessária.
+- O campo de descrição e os comentários existentes continuam compatíveis.

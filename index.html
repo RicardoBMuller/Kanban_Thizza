@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260716-owner-avatar-2" />
+  <link rel="stylesheet" href="styles.css?v=20260716-gray-rich-text-1" />
   </head>
 <body>
   <div id="introSplash" class="intro-splash" aria-hidden="true">
@@ -195,7 +195,9 @@
         </div>
         <div class="field">
           <label class="field-label" for="cardDescInput">Descrição</label>
-          <textarea id="cardDescInput" class="textarea" placeholder="Digite a descrição"></textarea>
+          <div id="cardDescInput" class="rich-editor-area rich-editor-area-description" contenteditable="true"
+               data-rich-editor="full" data-placeholder="Digite a descrição do card..."></div>
+          <small class="helper rich-editor-helper">Use a barra de formatação para criar títulos, parágrafos, listas, links, cores e emoticons.</small>
         </div>
         <div class="grid-2">
           <div class="field">
@@ -245,10 +247,12 @@
         </div>
         <div class="field">
           <label class="field-label">Comentários</label>
-          <div class="inline-add">
-            <input id="newCommentInput" class="input" type="text" placeholder="Novo comentário" />
-            <button id="addCommentBtn" class="btn btn-soft" type="button">Adicionar</button>
+          <div class="rich-comment-compose">
+            <div id="newCommentInput" class="rich-editor-area rich-editor-area-comment" contenteditable="true"
+                 data-rich-editor="comment" data-placeholder="Escreva um comentário..."></div>
+            <button id="addCommentBtn" class="btn btn-soft rich-comment-submit" type="button">Adicionar comentário</button>
           </div>
+          <small class="helper">Atalho: Ctrl + Enter para adicionar.</small>
           <div id="editCommentsList" class="edit-list"></div>
         </div>
       </div>
@@ -280,7 +284,7 @@
         </div>
         <div class="view-section">
           <h4>Descrição</h4>
-          <p id="viewCardDescription" class="view-text"></p>
+          <div id="viewCardDescription" class="view-text rich-content"></div>
         </div>
         <div class="view-section">
           <h4>Labels</h4>
@@ -323,10 +327,12 @@
             <h4>Comentários</h4>
             <span id="viewCommentsCounter" class="counter-badge">0</span>
           </div>
-          <div class="inline-add inline-add-view">
-            <input id="viewNewCommentInput" class="input" type="text" placeholder="Adicionar comentário" />
-            <button id="viewAddCommentBtn" class="btn btn-soft" type="button">Adicionar</button>
+          <div class="rich-comment-compose rich-comment-compose-view">
+            <div id="viewNewCommentInput" class="rich-editor-area rich-editor-area-comment" contenteditable="true"
+                 data-rich-editor="comment" data-placeholder="Adicionar comentário..."></div>
+            <button id="viewAddCommentBtn" class="btn btn-soft rich-comment-submit" type="button">Adicionar comentário</button>
           </div>
+          <small class="helper">Atalho: Ctrl + Enter para adicionar.</small>
           <div id="viewCommentsList" class="view-comments"></div>
         </div>
       </div>
@@ -472,6 +478,6 @@
 
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="config.js"></script>
-  <script defer src="app.js?v=20260716-owner-avatar-2"></script>
+  <script defer src="app.js?v=20260716-gray-rich-text-1"></script>
 </body>
 </html>

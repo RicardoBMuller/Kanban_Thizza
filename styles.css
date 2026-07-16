@@ -4320,3 +4320,417 @@ button.view-participant-item:hover {
     -webkit-text-stroke: 0 !important;
   }
 }
+
+/* ======================================================================
+   AJUSTE FINAL — CARDS CINZA + TEXTO RICO — 2026-07-16
+   ====================================================================== */
+:root {
+  --card-gray-top: rgba(111, 107, 117, .97);
+  --card-gray-mid: rgba(86, 82, 92, .97);
+  --card-gray-bottom: rgba(68, 65, 74, .98);
+  --card-gray-hover-top: rgba(123, 119, 129, .98);
+  --card-gray-hover-bottom: rgba(76, 72, 82, .98);
+  --card-white: #ffffff;
+  --card-white-soft: #f2eef3;
+  --card-white-muted: #d8d1da;
+  --card-salmon: #ef929c;
+  --card-salmon-soft: #ffd5da;
+  --editor-surface: #312e36;
+  --editor-surface-2: #3b3741;
+  --editor-border: rgba(255, 255, 255, .14);
+}
+
+/* Cards normais e reabertos usam a mesma superfície cinza médio. */
+.card:not(.is-completed),
+.card:not(.is-completed):hover,
+.card.is-reopened,
+.card.is-reopened:hover {
+  color: var(--card-white) !important;
+  background:
+    linear-gradient(122deg, rgba(255,255,255,.085) 0%, rgba(255,255,255,.018) 42%, transparent 70%),
+    linear-gradient(150deg, var(--card-gray-top) 0%, var(--card-gray-mid) 52%, var(--card-gray-bottom) 100%) !important;
+  border-color: rgba(255,255,255,.15) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.12),
+    0 16px 32px rgba(10, 8, 12, .25) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(105%);
+  backdrop-filter: blur(8px) saturate(105%);
+  filter: none !important;
+}
+
+.card:not(.is-completed):hover,
+.card.is-reopened:hover {
+  background:
+    linear-gradient(122deg, rgba(255,255,255,.115) 0%, rgba(255,255,255,.028) 42%, transparent 70%),
+    linear-gradient(150deg, var(--card-gray-hover-top) 0%, #625e69 52%, var(--card-gray-hover-bottom) 100%) !important;
+  border-color: rgba(255,255,255,.23) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.16),
+    0 20px 39px rgba(10, 8, 12, .31) !important;
+}
+
+/* Reaberto: mesma cor do card normal, com faixa, marca d'água e tipografia salmão discreta. */
+.card.is-reopened,
+.card.is-reopened:hover {
+  border-color: rgba(239,146,156,.52) !important;
+  box-shadow:
+    inset 5px 0 0 #cf5266,
+    inset 0 1px 0 rgba(255,255,255,.13),
+    0 17px 34px rgba(10, 8, 12, .27) !important;
+}
+.card.is-reopened:hover {
+  box-shadow:
+    inset 5px 0 0 #df6678,
+    inset 0 1px 0 rgba(255,255,255,.17),
+    0 21px 40px rgba(10, 8, 12, .32) !important;
+}
+.card.is-reopened::before,
+.card.is-reopened:hover::before {
+  height: 4px !important;
+  opacity: 1 !important;
+  transform: scaleX(1) translateZ(0) !important;
+  background: linear-gradient(90deg, #cf5266, #ef929c 55%, #a92d49) !important;
+}
+.card.is-reopened .reopened-watermark {
+  color: rgba(255, 213, 218, .075) !important;
+  text-shadow: none !important;
+}
+
+/* Texto branco, sem contorno pesado. */
+.card:not(.is-completed) .card-title,
+.card:not(.is-completed) .card-desc,
+.card:not(.is-completed) .card-checklist-title,
+.card:not(.is-completed) .card-comments-info,
+.card:not(.is-completed) .card-attachments-info,
+.card:not(.is-completed) .card-check-item,
+.card:not(.is-completed) .card-check-item span,
+.card:not(.is-completed) .meta-chip,
+.card:not(.is-completed) .participant-chip,
+.card:not(.is-completed) .card-actions button {
+  color: var(--card-white) !important;
+  -webkit-text-fill-color: currentColor !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,.28) !important;
+}
+.card:not(.is-completed) .card-title {
+  font-weight: 850;
+  letter-spacing: -.012em;
+}
+.card:not(.is-completed) .card-desc,
+.card:not(.is-completed) .card-comments-info,
+.card:not(.is-completed) .card-attachments-info {
+  color: var(--card-white-soft) !important;
+}
+.card:not(.is-completed) .card-checklist-title,
+.card:not(.is-completed) .meta-chip {
+  color: var(--card-white-muted) !important;
+}
+.card.is-reopened .card-title,
+.card.is-reopened .card-desc,
+.card.is-reopened .card-comments-info,
+.card.is-reopened .card-attachments-info {
+  color: var(--card-salmon-soft) !important;
+}
+.card.is-reopened .card-checklist-title,
+.card.is-reopened .meta-chip {
+  color: #f5dce0 !important;
+}
+
+.card:not(.is-completed) .meta-chip,
+.card:not(.is-completed) .participant-chip,
+.card:not(.is-completed) .card-check-item {
+  background: linear-gradient(180deg, rgba(30,28,34,.38), rgba(21,20,24,.27)) !important;
+  border-color: rgba(255,255,255,.10) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.045) !important;
+}
+.card:not(.is-completed) .card-check-item.done {
+  background: linear-gradient(180deg, rgba(38,35,42,.48), rgba(26,24,29,.35)) !important;
+}
+.card:not(.is-completed) .card-check-item.done span {
+  color: #ddd7df !important;
+  -webkit-text-fill-color: #ddd7df !important;
+}
+.card:not(.is-completed) .label,
+.card:not(.is-completed) .card-status-badge,
+.card:not(.is-completed) .owner-role-badge {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: 0 1px 1px rgba(0,0,0,.24) !important;
+  background: linear-gradient(135deg, #b51b53, #761634) !important;
+  border-color: rgba(255,255,255,.20) !important;
+}
+.card.is-reopened .card-status-badge.reopened,
+.card.is-reopened .meta-chip.reopened-meta {
+  color: #fff !important;
+  background: linear-gradient(135deg, #d75f72, #a92d49) !important;
+  border-color: rgba(255,220,224,.32) !important;
+}
+.card:not(.is-completed) .card-progress {
+  background: rgba(18,17,20,.28) !important;
+  border-color: rgba(255,255,255,.07) !important;
+}
+.card:not(.is-completed) .card-progress-fill {
+  background: linear-gradient(90deg, #cf5266, #ef929c, #a92d49) !important;
+}
+.card:not(.is-completed) .card-comments-row {
+  border-top-color: rgba(255,255,255,.11) !important;
+}
+.card:not(.is-completed) .card-participant-avatar {
+  border-color: rgba(255,255,255,.9) !important;
+  box-shadow: 0 3px 8px rgba(0,0,0,.28) !important;
+}
+
+/* Descrição no card respeita parágrafos, listas, títulos e alinhamento. */
+.card-rich-preview {
+  display: block;
+  max-height: 250px;
+  overflow: auto;
+  padding-right: 5px;
+  margin: 8px 0 11px;
+  line-height: 1.48;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,.25) transparent;
+}
+.card-rich-preview::-webkit-scrollbar { width: 5px; }
+.card-rich-preview::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); border-radius: 999px; }
+.card-rich-preview p,
+.card-rich-preview div { margin: 0 0 7px; }
+.card-rich-preview p:last-child,
+.card-rich-preview div:last-child { margin-bottom: 0; }
+.card-rich-preview h1,
+.card-rich-preview h2,
+.card-rich-preview h3,
+.card-rich-preview h4 { margin: 8px 0 5px; line-height: 1.22; color: inherit; }
+.card-rich-preview h1 { font-size: 1.22rem; }
+.card-rich-preview h2 { font-size: 1.12rem; }
+.card-rich-preview h3 { font-size: 1.04rem; }
+.card-rich-preview ul,
+.card-rich-preview ol { margin: 5px 0 8px 20px; padding-left: 10px; }
+.card-rich-preview blockquote { margin: 7px 0; padding: 6px 10px; border-left: 3px solid #ef929c; background: rgba(17,16,19,.16); border-radius: 0 8px 8px 0; }
+.card-rich-preview pre { margin: 7px 0; padding: 8px 10px; overflow:auto; border-radius: 8px; background: rgba(17,16,19,.38); font-family: "Courier New", monospace; }
+.card-rich-preview a { color: #ffd2da; text-decoration: underline; }
+.card.is-reopened .card-rich-preview a { color: #fff; }
+
+/* Conteúdo rico exibido no modal e nos comentários. */
+.rich-content {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.rich-content > :first-child { margin-top: 0 !important; }
+.rich-content > :last-child { margin-bottom: 0 !important; }
+.rich-content p,
+.rich-content div { margin: 0 0 9px; }
+.rich-content h1,
+.rich-content h2,
+.rich-content h3,
+.rich-content h4 { margin: 12px 0 7px; line-height: 1.24; }
+.rich-content h1 { font-size: 1.55rem; }
+.rich-content h2 { font-size: 1.32rem; }
+.rich-content h3 { font-size: 1.14rem; }
+.rich-content h4 { font-size: 1rem; }
+.rich-content ul,
+.rich-content ol { margin: 7px 0 10px 24px; padding-left: 12px; }
+.rich-content li { margin: 3px 0; }
+.rich-content blockquote { margin: 9px 0; padding: 9px 13px; border-left: 4px solid #d8567e; border-radius: 0 10px 10px 0; background: rgba(216,86,126,.09); }
+.rich-content pre { margin: 9px 0; padding: 11px 13px; overflow: auto; border-radius: 10px; background: rgba(15,14,17,.48); border: 1px solid rgba(255,255,255,.08); font-family: "Courier New", monospace; white-space: pre-wrap; }
+.rich-content code { font-family: "Courier New", monospace; }
+.rich-content a { color: #f5a8c3; text-decoration: underline; text-underline-offset: 2px; }
+.rich-content hr { border: 0; border-top: 1px solid rgba(255,255,255,.16); margin: 13px 0; }
+.edit-comment-content { display:block; width:100%; color:#f5f0f4; }
+.view-comment-text { color:#f4eff3; }
+
+/* Editor completo semelhante ao de e-mail. */
+.rich-editor-shell {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+  border: 1px solid var(--editor-border);
+  border-radius: 14px;
+  background: var(--editor-surface);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.045), 0 8px 20px rgba(0,0,0,.12);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.rich-editor-shell:focus-within {
+  border-color: rgba(216,86,126,.62);
+  box-shadow: 0 0 0 3px rgba(216,86,126,.12), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.rich-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 8px;
+  border-bottom: 1px solid rgba(255,255,255,.09);
+  border-radius: 13px 13px 0 0;
+  background: linear-gradient(180deg, rgba(72,67,78,.98), rgba(54,50,59,.98));
+}
+.rich-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-right: 5px;
+  margin-right: 1px;
+  border-right: 1px solid rgba(255,255,255,.10);
+}
+.rich-toolbar-group:last-child { border-right: 0; padding-right: 0; }
+.rich-toolbar-selects { flex-wrap: wrap; }
+.rich-toolbar-select,
+.rich-tool-btn,
+.rich-color-label {
+  min-height: 30px;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 7px;
+  color: #f7f3f6;
+  background: rgba(22,20,25,.30);
+  font: inherit;
+  font-size: .72rem;
+  transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+.rich-toolbar-select {
+  height: 30px;
+  padding: 0 8px;
+  outline: 0;
+  cursor: pointer;
+}
+.rich-toolbar-select option { color: #f7f3f6; background: #36323a; }
+.rich-size-select { max-width: 100px; }
+.rich-tool-btn {
+  min-width: 31px;
+  padding: 4px 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rich-tool-btn:hover,
+.rich-toolbar-select:hover,
+.rich-color-label:hover {
+  color: #fff;
+  border-color: rgba(245,168,195,.42);
+  background: rgba(216,86,126,.18);
+}
+.rich-tool-btn:active { transform: translateY(1px); }
+.rich-color-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  padding: 0;
+  font-weight: 900;
+  cursor: pointer;
+  overflow: hidden;
+}
+.rich-color-label input[type="color"] {
+  position: absolute;
+  inset: auto 3px 2px;
+  width: 26px;
+  height: 5px;
+  padding: 0;
+  border: 0;
+  opacity: .95;
+  cursor: pointer;
+}
+.rich-highlight-label { font-size: .82rem; }
+.rich-editor-area {
+  min-height: 150px;
+  padding: 14px 15px;
+  border: 0;
+  outline: 0;
+  color: #f7f3f6;
+  background: linear-gradient(180deg, rgba(49,46,54,.96), rgba(42,39,47,.98));
+  border-radius: 0 0 13px 13px;
+  font-size: .92rem;
+  line-height: 1.55;
+  overflow: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.rich-editor-area-description { min-height: 210px; max-height: 430px; }
+.rich-editor-area-comment { min-height: 92px; max-height: 250px; }
+.rich-editor-area:empty::before {
+  content: attr(data-placeholder);
+  color: #a99faa;
+  pointer-events: none;
+}
+.rich-editor-area p,
+.rich-editor-area div { margin: 0 0 8px; }
+.rich-editor-area h1,
+.rich-editor-area h2,
+.rich-editor-area h3,
+.rich-editor-area h4 { margin: 10px 0 6px; }
+.rich-editor-area ul,
+.rich-editor-area ol { margin: 6px 0 9px 25px; }
+.rich-editor-area blockquote { margin: 8px 0; padding: 8px 12px; border-left: 4px solid #d8567e; background: rgba(216,86,126,.10); }
+.rich-editor-area pre { padding: 10px 12px; border-radius: 9px; background: rgba(12,11,14,.50); font-family: "Courier New", monospace; white-space: pre-wrap; }
+.rich-editor-area a { color: #f5a8c3; text-decoration: underline; }
+.rich-editor-helper { display:block; margin-top:6px; }
+.rich-editor-shell.is-disabled { opacity: .67; }
+.rich-editor-shell.is-disabled .rich-editor-area { cursor: not-allowed; }
+.rich-editor-shell.is-disabled .rich-toolbar { pointer-events: none; }
+.rich-editor-shell button:disabled,
+.rich-editor-shell select:disabled,
+.rich-editor-shell input:disabled { cursor:not-allowed; opacity:.55; }
+
+.rich-comment-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.rich-comment-compose .rich-editor-shell { min-width: 0; }
+.rich-comment-submit { min-height: 42px; white-space: nowrap; }
+.rich-comment-compose.is-locked { opacity: .68; }
+
+.rich-emoji-picker {
+  position: absolute;
+  z-index: 70;
+  top: 43px;
+  right: 8px;
+  display: grid;
+  grid-template-columns: repeat(8, 34px);
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  max-height: 230px;
+  overflow: auto;
+  padding: 9px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 12px;
+  background: rgba(39,36,43,.98);
+  box-shadow: 0 18px 40px rgba(0,0,0,.38);
+}
+.rich-emoji-picker.hidden { display: none !important; }
+.rich-emoji-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+.rich-emoji-btn:hover { border-color: rgba(245,168,195,.32); background: rgba(216,86,126,.16); transform: scale(1.08); }
+
+/* O modal reaberto mantém o editor legível. */
+#viewCardModalOverlay.is-reopened-context .rich-editor-shell,
+#cardModalOverlay.is-reopened-context .rich-editor-shell {
+  border-color: rgba(239,146,156,.28);
+}
+#viewCardModalOverlay.is-reopened-context .rich-toolbar,
+#cardModalOverlay.is-reopened-context .rich-toolbar {
+  background: linear-gradient(180deg, rgba(82,65,72,.98), rgba(57,48,54,.98));
+}
+
+@media (max-width: 980px) {
+  .rich-comment-compose { grid-template-columns: 1fr; }
+  .rich-comment-submit { width: 100%; }
+  .rich-toolbar-group { border-right: 0; padding-right: 0; }
+}
+@media (max-width: 640px) {
+  .rich-toolbar { padding: 6px; gap: 4px; }
+  .rich-toolbar-select { max-width: 125px; }
+  .rich-toolbar-selects { width: 100%; }
+  .rich-tool-btn { min-width: 29px; padding: 4px 6px; }
+  .rich-editor-area-description { min-height: 180px; }
+  .rich-emoji-picker { grid-template-columns: repeat(6, 34px); }
+}

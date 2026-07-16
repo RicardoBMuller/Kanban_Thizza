@@ -7,7 +7,7 @@ const SUPABASE_URL = String(KANBAN_CONFIG.SUPABASE_URL || "").trim();
 const SUPABASE_ANON_KEY = String(
   KANBAN_CONFIG.SUPABASE_PUBLISHABLE_KEY || KANBAN_CONFIG.SUPABASE_ANON_KEY || ""
 ).trim();
-const APP_VERSION = "2026.07.16-fcc-owner-avatar-reopened-neutral-2";
+const APP_VERSION = "2026.07.16-fcc-gray-rich-text-1";
 
 // ============================================================
 // CONSTANTES
@@ -191,6 +191,307 @@ init();
 // ============================================================
 function on(el, eventName, handler) { if (el) el.addEventListener(eventName, handler); }
 
+// ============================================================
+// EDITOR DE TEXTO RICO — descrição e comentários
+// ============================================================
+const RICH_ALLOWED_TAGS = new Set([
+  "p", "div", "br", "span", "strong", "b", "em", "i", "u", "s", "strike",
+  "ul", "ol", "li", "blockquote", "pre", "code", "a", "h1", "h2", "h3", "h4",
+  "sub", "sup", "font", "hr"
+]);
+const RICH_DANGEROUS_TAGS = new Set([
+  "script", "style", "iframe", "object", "embed", "svg", "math", "img", "video", "audio", "form", "input", "button"
+]);
+const RICH_ALLOWED_STYLES = new Set([
+  "color", "background-color", "text-align", "font-family", "font-size", "font-weight",
+  "font-style", "text-decoration", "margin-left", "padding-left", "line-height"
+]);
+const richEditorSelections = new WeakMap();
+let richEditorsInitialized = false;
+
+function normalizeRichInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/<\/?[a-z][\s\S]*>/i.test(raw)) return raw;
+  const escaped = escapeHtml(raw);
+  return escaped
+    .split(/\n{2,}/)
+    .map(paragraph => `<p>${paragraph.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function sanitizeInlineStyle(styleText) {
+  return String(styleText || "")
+    .split(";")
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      const idx = part.indexOf(":");
+      if (idx < 1) return "";
+      const property = part.slice(0, idx).trim().toLowerCase();
+      const value = part.slice(idx + 1).trim();
+      if (!RICH_ALLOWED_STYLES.has(property)) return "";
+      if (/url\s*\(|expression\s*\(|javascript:|behavior\s*:/i.test(value)) return "";
+      return `${property}: ${value}`;
+    })
+    .filter(Boolean)
+    .join("; ");
+}
+
+function sanitizeRichHtml(value) {
+  const raw = normalizeRichInput(value);
+  if (!raw) return "";
+  const template = document.createElement("template");
+  template.innerHTML = raw;
+  const elements = [...template.content.querySelectorAll("*")];
+
+  for (const element of elements) {
+    const tag = element.tagName.toLowerCase();
+    if (RICH_DANGEROUS_TAGS.has(tag)) {
+      element.remove();
+      continue;
+    }
+    if (!RICH_ALLOWED_TAGS.has(tag)) {
+      element.replaceWith(...element.childNodes);
+      continue;
+    }
+
+    for (const attribute of [...element.attributes]) {
+      const name = attribute.name.toLowerCase();
+      const valueText = attribute.value;
+      const allowed =
+        (tag === "a" && ["href", "target", "rel", "title"].includes(name)) ||
+        (tag === "font" && ["face", "size", "color"].includes(name)) ||
+        name === "style";
+      if (!allowed) element.removeAttribute(attribute.name);
+      else if (name === "style") {
+        const safeStyle = sanitizeInlineStyle(valueText);
+        if (safeStyle) element.setAttribute("style", safeStyle);
+        else element.removeAttribute("style");
+      }
+    }
+
+    if (tag === "a") {
+      const href = String(element.getAttribute("href") || "").trim();
+      if (!/^(https?:|mailto:|tel:|#)/i.test(href)) element.removeAttribute("href");
+      else {
+        element.setAttribute("target", "_blank");
+        element.setAttribute("rel", "noopener noreferrer");
+      }
+    }
+  }
+
+  return template.innerHTML.trim();
+}
+
+function richTextToPlain(value) {
+  const safe = sanitizeRichHtml(value);
+  if (!safe) return "";
+  const template = document.createElement("template");
+  template.innerHTML = safe;
+  const blockTags = new Set(["P", "DIV", "LI", "BLOCKQUOTE", "PRE", "H1", "H2", "H3", "H4", "BR", "HR"]);
+  const walk = node => {
+    if (node.nodeType === Node.TEXT_NODE) return node.nodeValue || "";
+    if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return "";
+    if (node.nodeName === "BR" || node.nodeName === "HR") return "\n";
+    const text = [...node.childNodes].map(walk).join("");
+    return blockTags.has(node.nodeName) ? `${text}\n` : text;
+  };
+  return walk(template.content).replace(/\u00a0/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function renderRichText(value, fallback = "") {
+  const safe = sanitizeRichHtml(value);
+  if (richTextToPlain(safe)) return safe;
+  return fallback ? `<p>${escapeHtml(fallback)}</p>` : "";
+}
+
+function getRichEditorHtml(editor) {
+  if (!editor) return "";
+  const safe = sanitizeRichHtml(editor.innerHTML || "");
+  return richTextToPlain(safe) ? safe : "";
+}
+
+function setRichEditorHtml(editor, value) {
+  if (!editor) return;
+  editor.innerHTML = sanitizeRichHtml(value);
+}
+
+function clearRichEditor(editor) {
+  if (!editor) return;
+  editor.innerHTML = "";
+}
+
+function setRichEditorDisabled(editor, disabled) {
+  if (!editor) return;
+  editor.setAttribute("contenteditable", disabled ? "false" : "true");
+  editor.setAttribute("aria-disabled", disabled ? "true" : "false");
+  editor.classList.toggle("is-disabled", Boolean(disabled));
+  const shell = editor.closest(".rich-editor-shell");
+  shell?.classList.toggle("is-disabled", Boolean(disabled));
+  shell?.querySelectorAll("button, select, input").forEach(control => { control.disabled = Boolean(disabled); });
+}
+
+function saveRichEditorSelection(editor) {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (editor.contains(range.commonAncestorContainer)) richEditorSelections.set(editor, range.cloneRange());
+}
+
+function restoreRichEditorSelection(editor) {
+  const range = richEditorSelections.get(editor);
+  editor.focus();
+  if (!range) return;
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function executeRichCommand(editor, command, value = null) {
+  if (!editor || editor.getAttribute("contenteditable") === "false") return;
+  restoreRichEditorSelection(editor);
+  try { document.execCommand("styleWithCSS", false, true); } catch (_) {}
+  if (command === "createLink") {
+    const url = prompt("Informe o endereço do link:", "https://");
+    if (!url) return;
+    document.execCommand("createLink", false, url);
+  } else if (command === "hiliteColor") {
+    const ok = document.execCommand("hiliteColor", false, value);
+    if (!ok) document.execCommand("backColor", false, value);
+  } else {
+    document.execCommand(command, false, value);
+  }
+  saveRichEditorSelection(editor);
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function richToolbarMarkup(mode) {
+  const compactClass = mode === "comment" ? " is-comment-toolbar" : "";
+  return `
+    <div class="rich-toolbar${compactClass}" role="toolbar" aria-label="Formatação de texto">
+      <div class="rich-toolbar-group rich-toolbar-selects">
+        <select class="rich-toolbar-select" data-rich-select="formatBlock" title="Estilo do texto" aria-label="Estilo do texto">
+          <option value="p">Parágrafo</option><option value="h1">Título 1</option><option value="h2">Título 2</option>
+          <option value="h3">Título 3</option><option value="blockquote">Citação</option><option value="pre">Código</option>
+        </select>
+        <select class="rich-toolbar-select" data-rich-select="fontName" title="Fonte" aria-label="Fonte">
+          <option value="Arial">Arial</option><option value="Verdana">Verdana</option><option value="Georgia">Georgia</option>
+          <option value="Times New Roman">Times</option><option value="Courier New">Courier</option>
+        </select>
+        <select class="rich-toolbar-select rich-size-select" data-rich-select="fontSize" title="Tamanho" aria-label="Tamanho da fonte">
+          <option value="2">Pequeno</option><option value="3" selected>Normal</option><option value="4">Médio</option>
+          <option value="5">Grande</option><option value="6">Muito grande</option>
+        </select>
+      </div>
+      <div class="rich-toolbar-group">
+        <button type="button" class="rich-tool-btn" data-rich-command="bold" title="Negrito (Ctrl+B)"><strong>B</strong></button>
+        <button type="button" class="rich-tool-btn" data-rich-command="italic" title="Itálico (Ctrl+I)"><em>I</em></button>
+        <button type="button" class="rich-tool-btn" data-rich-command="underline" title="Sublinhado (Ctrl+U)"><u>U</u></button>
+        <button type="button" class="rich-tool-btn" data-rich-command="strikeThrough" title="Tachado"><s>S</s></button>
+        <button type="button" class="rich-tool-btn" data-rich-command="subscript" title="Subscrito">X₂</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="superscript" title="Sobrescrito">X²</button>
+      </div>
+      <div class="rich-toolbar-group rich-color-tools">
+        <label class="rich-color-label" title="Cor do texto">A<input type="color" data-rich-color="foreColor" value="#ffffff" aria-label="Cor do texto"></label>
+        <label class="rich-color-label rich-highlight-label" title="Marca-texto">▰<input type="color" data-rich-color="hiliteColor" value="#fff19a" aria-label="Cor de destaque"></label>
+      </div>
+      <div class="rich-toolbar-group">
+        <button type="button" class="rich-tool-btn" data-rich-command="justifyLeft" title="Alinhar à esquerda">≡</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="justifyCenter" title="Centralizar">≡</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="justifyRight" title="Alinhar à direita">≡</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="justifyFull" title="Justificar">☰</button>
+      </div>
+      <div class="rich-toolbar-group">
+        <button type="button" class="rich-tool-btn" data-rich-command="insertUnorderedList" title="Lista com marcadores">• Lista</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="insertOrderedList" title="Lista numerada">1. Lista</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="outdent" title="Diminuir recuo">⇤</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="indent" title="Aumentar recuo">⇥</button>
+      </div>
+      <div class="rich-toolbar-group">
+        <button type="button" class="rich-tool-btn" data-rich-command="createLink" title="Inserir link">🔗</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="unlink" title="Remover link">⛓️‍💥</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="insertHorizontalRule" title="Linha horizontal">―</button>
+        <button type="button" class="rich-tool-btn rich-emoji-trigger" data-rich-action="emoji" title="Emoticons">😊</button>
+      </div>
+      <div class="rich-toolbar-group">
+        <button type="button" class="rich-tool-btn" data-rich-command="undo" title="Desfazer">↶</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="redo" title="Refazer">↷</button>
+        <button type="button" class="rich-tool-btn" data-rich-command="removeFormat" title="Limpar formatação">Tx</button>
+      </div>
+    </div>
+    <div class="rich-emoji-picker hidden" role="dialog" aria-label="Escolher emoticon"></div>`;
+}
+
+function initializeRichEditors() {
+  if (richEditorsInitialized) return;
+  richEditorsInitialized = true;
+  const emojis = ["😀","😃","😄","😁","😊","😉","😍","🥰","😘","😎","🤓","🤔","😕","😢","😭","😡","🤯","🥳","👏","🙌","👍","👎","👌","🙏","💪","🤝","✅","❌","⚠️","🚨","📌","📎","📅","⏰","💡","🎯","🚀","⭐","❤️","💙","💚","💛","🔥","🎉","📢","📝","🔍","🔒","🔓","↩️"];
+
+  document.querySelectorAll("[data-rich-editor]").forEach(editor => {
+    if (editor.closest(".rich-editor-shell")) return;
+    const mode = editor.dataset.richEditor || "full";
+    const shell = document.createElement("div");
+    shell.className = `rich-editor-shell rich-editor-shell-${mode}`;
+    editor.parentNode.insertBefore(shell, editor);
+    shell.innerHTML = richToolbarMarkup(mode);
+    shell.appendChild(editor);
+
+    const picker = shell.querySelector(".rich-emoji-picker");
+    picker.innerHTML = emojis.map(emoji => `<button type="button" class="rich-emoji-btn" data-emoji="${emoji}" title="${emoji}">${emoji}</button>`).join("");
+
+    ["mouseup", "keyup", "focus", "input"].forEach(eventName => editor.addEventListener(eventName, () => saveRichEditorSelection(editor)));
+    editor.addEventListener("paste", event => {
+      event.preventDefault();
+      const html = event.clipboardData?.getData("text/html");
+      const text = event.clipboardData?.getData("text/plain") || "";
+      executeRichCommand(editor, "insertHTML", html ? sanitizeRichHtml(html) : normalizeRichInput(text));
+    });
+
+    shell.querySelectorAll(".rich-tool-btn").forEach(button => {
+      button.addEventListener("mousedown", event => event.preventDefault());
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        const action = button.dataset.richAction;
+        if (action === "emoji") {
+          document.querySelectorAll(".rich-emoji-picker").forEach(other => { if (other !== picker) other.classList.add("hidden"); });
+          picker.classList.toggle("hidden");
+          return;
+        }
+        picker.classList.add("hidden");
+        executeRichCommand(editor, button.dataset.richCommand);
+      });
+    });
+
+    shell.querySelectorAll("[data-rich-select]").forEach(select => {
+      select.addEventListener("mousedown", () => saveRichEditorSelection(editor));
+      select.addEventListener("change", () => {
+        executeRichCommand(editor, select.dataset.richSelect, select.value);
+        if (select.dataset.richSelect === "formatBlock") select.value = "p";
+      });
+    });
+
+    shell.querySelectorAll("[data-rich-color]").forEach(input => {
+      input.addEventListener("mousedown", () => saveRichEditorSelection(editor));
+      input.addEventListener("input", () => executeRichCommand(editor, input.dataset.richColor, input.value));
+    });
+
+    picker.querySelectorAll(".rich-emoji-btn").forEach(button => {
+      button.addEventListener("mousedown", event => event.preventDefault());
+      button.addEventListener("click", event => {
+        event.stopPropagation();
+        executeRichCommand(editor, "insertText", button.dataset.emoji || "");
+        picker.classList.add("hidden");
+      });
+    });
+  });
+
+  document.addEventListener("click", event => {
+    if (event.target.closest(".rich-editor-shell")) return;
+    document.querySelectorAll(".rich-emoji-picker").forEach(picker => picker.classList.add("hidden"));
+  });
+}
+
 function requireAuth(actionLabel = "continuar") {
   if (authUser) return true;
   alert(`Faça login com Google para ${actionLabel}.`);
@@ -222,6 +523,7 @@ async function init() {
   migrateOldData();
   applySavedTheme();
   applySavedSidebar();
+  initializeRichEditors();
   renderProjects();
   renderBoard();
   bindEvents();
@@ -265,7 +567,7 @@ function bindEvents() {
   on(viewSelectAttachmentBtn, "click", () => viewAttachmentInput?.click());
   on(viewAttachmentInput, "change", handleViewAttachmentSelection);
   on(newChecklistItemInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleAddChecklistItem(); }});
-  on(newCommentInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleAddComment(); }});
+  on(newCommentInput, "keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleAddComment(); }});
   on(searchInput, "input", renderBoard);
   on(sidebarToggleBtn, "click", e => { e.stopPropagation(); toggleSidebar(); });
   window.addEventListener("resize", handleResponsiveLayout);
@@ -326,7 +628,7 @@ function bindEvents() {
   });
 
   on(viewAddCommentBtn, "click", handleViewAddComment);
-  on(viewNewCommentInput, "keydown", e => { if (e.key === "Enter") { e.preventDefault(); handleViewAddComment(); }});
+  on(viewNewCommentInput, "keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleViewAddComment(); }});
 
   document.addEventListener("click", e => {
     if (!projectActionsOpen) return;
@@ -843,7 +1145,7 @@ async function handleSharedCardSave(cardId) {
     }
     const updates = {
       title,
-      description: cardDescInput.value.trim(),
+      description: getRichEditorHtml(cardDescInput),
       checklist: clone(tempChecklist),
       comments: clone(tempComments),
       attachments: normalizeAttachments([...clone(tempAttachments), ...uploaded])
@@ -1873,10 +2175,10 @@ function renderColumn(columnId, cards, isShared = false) {
   const filtered = cards.filter(card => {
     if (!query) return true;
     const searchText = [
-      card.title, card.description, card.owner,
+      card.title, richTextToPlain(card.description), card.owner,
       ...(card.labels || []),
       ...normalizeParticipants(card.participants || []).map(p => `${participantDisplayName(p)} ${participantEmail(p)}`),
-      ...(card.comments || []).map(c => c.text),
+      ...(card.comments || []).map(c => richTextToPlain(c.text)),
       ...(card.checklist || []).map(i => i.text),
       ...normalizeAttachments(card.attachments || []).map(a => a.name)
     ].join(" ").toLowerCase();
@@ -1932,7 +2234,7 @@ function renderColumn(columnId, cards, isShared = false) {
       ${isReopened ? `<span class="reopened-watermark" aria-hidden="true">REABERTO</span>` : ""}
       ${statusBadges ? `<div class="card-status-row">${statusBadges}</div>` : ""}
       <h4 class="card-title">${escapeHtml(card.title || "Sem título")}</h4>
-      <p class="card-desc">${escapeHtml(truncate(card.description || "Sem descrição.", 140))}</p>
+      <div class="card-desc rich-content card-rich-preview">${renderRichText(card.description, "Sem descrição.")}</div>
       ${labelsHtml ? `<div class="card-labels">${labelsHtml}</div>` : ""}
       ${meta.length ? `<div class="card-meta">${meta.join("")}</div>` : ""}
       ${checkHtml}
@@ -2116,6 +2418,7 @@ function openCardModal(mode, columnId, cardId = null) {
   currentEditingCardId = null;
   tempChecklist        = [];
   tempComments         = [];
+  clearRichEditor(newCommentInput);
   tempAttachments      = [];
   pendingAttachmentFiles = [];
   removedAttachmentPaths = new Set();
@@ -2125,7 +2428,7 @@ function openCardModal(mode, columnId, cardId = null) {
   if (mode === "create") {
     cardModalTitle.textContent = "Novo Card";
     deleteCardBtn.classList.add("hidden");
-    cardTitleInput.value  = ""; cardDescInput.value  = "";
+    cardTitleInput.value = ""; clearRichEditor(cardDescInput);
     cardOwnerInput.value  = authUser ? getUserPresentation(authUser).fullName : "";
     cardDateInput.value   = ""; cardLabelsInput.value = "";
     if (cardParticipantsInput) cardParticipantsInput.value = "";
@@ -2145,7 +2448,7 @@ function openCardModal(mode, columnId, cardId = null) {
     }
 
     cardTitleInput.value = found.card.title || "";
-    cardDescInput.value  = found.card.description || "";
+    setRichEditorHtml(cardDescInput, found.card.description || "");
 
     if (shared) {
       // PARTICIPANT MODE: restrict fields
@@ -2262,7 +2565,7 @@ async function handleSaveCard() {
   const previousCard = isEditing ? findCard(currentEditingCardId)?.card : null;
   const cardData = {
     id: currentEditingCardId || uid(), title,
-    description: cardDescInput.value.trim(),
+    description: getRichEditorHtml(cardDescInput),
     owner: cardOwnerInput.value.trim() || (authUser ? getUserPresentation(authUser).fullName : ""),
     ownerId: previousCard?.ownerId || authUser?.id || null,
     ownerProfile: previousCard?.ownerProfile || (authUser ? {
@@ -2408,11 +2711,11 @@ function handleAddChecklistItem() {
 }
 
 function handleAddComment() {
-  const text = newCommentInput.value.trim();
+  const text = getRichEditorHtml(newCommentInput);
   if (!text) return;
   tempComments.push({ id: uid(), text, author: authUser ? getUserPresentation(authUser).fullName : "", createdAt: new Date().toISOString() });
   cardModalDirty = true;
-  newCommentInput.value = "";
+  clearRichEditor(newCommentInput);
   renderEditComments();
 }
 
@@ -2442,7 +2745,7 @@ function renderEditComments() {
     row.className = "edit-item";
     row.innerHTML = `
       <div class="edit-item-left">
-        <span class="edit-item-copy"><strong>${escapeHtml(comment.text)}</strong><small>${comment.author ? `${escapeHtml(comment.author)} · ` : ""}Incluído em ${escapeHtml(formatDateTime(comment.createdAt))}</small></span>
+        <span class="edit-item-copy"><span class="edit-comment-content rich-content">${renderRichText(comment.text)}</span><small>${comment.author ? `${escapeHtml(comment.author)} · ` : ""}Incluído em ${escapeHtml(formatDateTime(comment.createdAt))}</small></span>
       </div>
       <button class="btn btn-soft btn-sm" type="button">Remover</button>`;
     row.querySelector("button").addEventListener("click", () => { tempComments = tempComments.filter(c => c.id !== comment.id); cardModalDirty = true; renderEditComments(); });
@@ -2469,7 +2772,7 @@ function openViewCardModal(cardId) {
   viewEditCardBtn.dataset.cardId = card.id;
 
   viewCardTitle.textContent       = card.title || "Sem título";
-  viewCardDescription.textContent = card.description || "Sem descrição.";
+  viewCardDescription.innerHTML = renderRichText(card.description, "Sem descrição.");
   viewCardColumn.textContent      = `Coluna: ${columnLabel(columnId)}`;
   if (viewCardCreatedAt) {
     viewCardCreatedAt.textContent = `Incluído: ${formatDateTime(card.createdAt)}`;
@@ -2558,7 +2861,7 @@ function openViewCardModal(cardId) {
       const row = document.createElement("div");
       row.className = "view-comment-item";
       row.innerHTML = `
-        <div class="view-comment-text">${escapeHtml(comment.text)}</div>
+        <div class="view-comment-text rich-content">${renderRichText(comment.text)}</div>
         <div class="view-comment-meta-row">
           <div class="view-comment-meta">${comment.author ? `${escapeHtml(comment.author)} · ` : ""}${formatDateTime(comment.createdAt)}</div>
           ${!isParticipant && !isCompleted ? `<button type="button" class="btn btn-soft btn-sm">Remover</button>` : ""}
@@ -2578,10 +2881,10 @@ function openViewCardModal(cardId) {
   // Cards concluídos ficam travados; a única ação disponível é reabrir.
   injectMoveSection(card.id, columnId, isParticipant, isCompleted);
 
-  viewNewCommentInput.disabled = isCompleted;
+  setRichEditorDisabled(viewNewCommentInput, isCompleted);
   viewAddCommentBtn.disabled = isCompleted;
-  viewNewCommentInput.placeholder = isCompleted ? "Card concluído: reabra para comentar" : "Adicionar comentário";
-  viewNewCommentInput.closest(".inline-add")?.classList.toggle("is-locked", isCompleted);
+  viewNewCommentInput.dataset.placeholder = isCompleted ? "Card concluído: reabra para comentar" : "Adicionar comentário...";
+  viewNewCommentInput.closest(".rich-comment-compose")?.classList.toggle("is-locked", isCompleted);
 
   if (isParticipant || isCompleted) {
     viewEditCardBtn.style.display = "none";
@@ -2676,7 +2979,7 @@ function injectMoveSection(cardId, currentCol, isParticipant, isCompleted = fals
   });
 }
 function closeViewCardModal() {
-  viewNewCommentInput.value = "";
+  clearRichEditor(viewNewCommentInput);
   if (viewAttachmentInput) viewAttachmentInput.value = "";
   setCardModalVisualState(viewCardModalOverlay);
   closeModal(viewCardModalOverlay);
@@ -2684,7 +2987,7 @@ function closeViewCardModal() {
 
 async function handleViewAddComment() {
   const cardId = viewEditCardBtn.dataset.cardId;
-  const text   = viewNewCommentInput.value.trim();
+  const text = getRichEditorHtml(viewNewCommentInput);
   const lockedShared = findSharedCard(cardId || "");
   const lockedOwned = cardId ? findCard(cardId) : null;
   if (lockedShared?.columnId === "done" || lockedOwned?.columnId === "done") {
@@ -2702,7 +3005,7 @@ async function handleViewAddComment() {
 
   if (sharedEntry) {
     const ok = await addSharedCardComment(sharedEntry.card.id, text);
-    if (ok) { viewNewCommentInput.value = ""; openViewCardModal(sharedEntry.card.id); renderBoard(); }
+    if (ok) { clearRichEditor(viewNewCommentInput); openViewCardModal(sharedEntry.card.id); renderBoard(); }
     return;
   }
 
@@ -2711,7 +3014,7 @@ async function handleViewAddComment() {
   if (!found) return;
   if (!Array.isArray(found.card.comments)) found.card.comments = [];
   found.card.comments.push({ id: uid(), text, author: authUser ? getUserPresentation(authUser).fullName : "", createdAt: new Date().toISOString() });
-  viewNewCommentInput.value = "";
+  clearRichEditor(viewNewCommentInput);
   try {
     await updateOwnedCardInCloud(cardId, { comments: found.card.comments || [] });
     saveState(); openViewCardModal(cardId); renderBoard();
@@ -2960,7 +3263,7 @@ function updateDashboard(project) {
 // UTILITIES
 // ============================================================
 function columnLabel(id) { return { todo: "A Fazer", doing: "Em Progresso", done: "Concluído" }[id] || id; }
-function truncate(text, max) { return text.length > max ? `${text.slice(0, max).trim()}...` : text; }
+function truncate(text, max) { const plain = richTextToPlain(text); return plain.length > max ? `${plain.slice(0, max).trim()}...` : plain; }
 function formatDate(d) { if (!d) return ""; return new Date(`${d}T00:00:00`).toLocaleDateString("pt-BR"); }
 function formatDateTime(d) {
   if (!d) return "Data não informada";
