@@ -1,9 +1,9 @@
-ANTES DE PUBLICAR NO GITHUB PAGES
+ATENÇÃO ANTES DE PUBLICAR
 
-1. Preserve o seu config.js atual, que contém a Project URL e a Publishable Key corretas do Supabase.
-2. Extraia este ZIP.
-3. Copie o seu config.js funcional para dentro da pasta extraída, substituindo o arquivo de exemplo.
-4. Envie os arquivos para a raiz do repositório do GitHub Pages.
-5. Aguarde o deploy e use Ctrl + F5 no navegador.
+O config.js deste pacote pode conter valores de exemplo.
+Mantenha o config.js que já está funcionando no seu GitHub Pages ou preencha nele:
+- SUPABASE_URL
+- SUPABASE_PUBLISHABLE_KEY
 
-Não é necessário executar nenhum SQL para esta atualização.
+Não coloque Service Role Key, Secret Key, Client Secret do Google ou senha do banco no GitHub.
+Não é necessário executar SQL para esta atualização visual.

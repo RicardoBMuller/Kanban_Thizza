@@ -1,40 +1,16 @@
-CORREÇÃO 2026-07-16 — TELA DE APRESENTAÇÃO
-- Corrigida a ordem de inicialização do editor de texto rico.
-- Adicionado mecanismo de segurança para remover o splash mesmo se ocorrer falha externa.
-- Nenhuma alteração no banco de dados é necessária.
-
-KANBAN QUEST — VERSÃO CINZA + EDITOR DE TEXTO RICO
+KANBAN QUEST — PALETA FINAL DOS CARDS
 Data: 16/07/2026
 
 ALTERAÇÕES DESTA VERSÃO
+- Card normal: gradiente cinza médio/escuro, igual ao visual cinza aprovado.
+- Card reaberto: gradiente salmão médio, com texto branco de alto contraste.
+- Faixa vermelha e marca d'água REABERTO preservadas.
+- Chips, checklist, metadados e botões harmonizados com ambos os fundos.
+- Descrição rica continua respeitando parágrafos, listas, alinhamentos e demais formatações.
+- Editor completo, anexos, avatares, notificações e demais recursos foram mantidos.
+- Nenhuma alteração de banco de dados é necessária.
 
-1. CARDS EM CINZA CLARO/MÉDIO
-- Cards normais e reabertos usam a mesma superfície cinza em gradiente.
-- Textos principais dos cards usam branco e cinza muito claro para boa leitura.
-- Cards reabertos continuam identificados por faixa vermelha, marca d'água e tipografia salmão discreta.
-
-2. DESCRIÇÃO RESPEITANDO A FORMATAÇÃO
-- Parágrafos, quebras de linha, listas, títulos, alinhamentos, citações e blocos de código aparecem também na visualização externa do card.
-- A descrição deixa de ser transformada em uma única linha.
-- Conteúdo extenso possui rolagem interna para preservar o tamanho do quadro.
-
-3. EDITOR COMPLETO DE TEXTO
-- Negrito, itálico, sublinhado e tachado.
-- Subscrito e sobrescrito.
-- Títulos, parágrafos, citação e bloco de código.
-- Fonte e tamanho da fonte.
-- Cor do texto e marca-texto.
-- Alinhamento à esquerda, centro, direita e justificado.
-- Listas numeradas e com marcadores.
-- Recuo e redução de recuo.
-- Links, linha horizontal, desfazer, refazer e limpar formatação.
-- Seletor de emoticons.
-- Ctrl + Enter adiciona comentários.
-
-4. SEGURANÇA
-- O HTML produzido pelo editor é higienizado antes de ser salvo ou exibido.
-- Scripts, iframes e atributos perigosos são removidos.
-
-BANCO DE DADOS
-- Nenhuma alteração de SQL é necessária.
-- O campo de descrição e os comentários existentes continuam compatíveis.
+PUBLICAÇÃO
+1. Preserve o config.js que já funciona no seu GitHub Pages.
+2. Substitua os demais arquivos na raiz do repositório.
+3. Aguarde o deploy e pressione Ctrl + F5.
