@@ -64,13 +64,6 @@ supabase/
 
 ---
 
-## Atualização visual — cards rosa em gradiente
+## Atualização visual: cards rosa com alta legibilidade
 
-Esta versão utiliza as duas cores da referência fornecida:
-
-- **Card reaberto:** base `#E3868F`, com gradiente rosa mais intenso.
-- **Card normal:** base `#FFD4D5`, com gradiente rosa claro.
-
-Os fundos possuem transparência moderada e os textos brancos receberam contorno preto mínimo para melhorar a leitura. A faixa vermelha e a marca d'água continuam exclusivas dos cards reabertos.
-
-Esta atualização não exige nenhuma alteração no Supabase.
+Esta versão mantém a paleta rosa dos cards, mas troca o texto branco das superfícies claras por vinho profundo. Labels, badges e botões continuam escuros com texto branco. Nenhuma alteração de banco é necessária.

@@ -1,16 +1,16 @@
-KANBAN QUEST — CARDS ROSA EM GRADIENTE
+KANBAN QUEST — CARDS ROSA COM ALTA LEGIBILIDADE
 Versão: 2026-07-16
 
 ALTERAÇÕES DESTA VERSÃO
-- Mantido todo o funcionamento da versão anterior.
-- Cards reabertos passam a usar a paleta rosa intensa #E3868F, baseada na imagem de referência.
-- Cards normais passam a usar a paleta rosa clara #FFD4D5, baseada na imagem de referência.
-- As duas paletas receberam gradientes suaves e transparência moderada, sem efeito excessivo.
-- Cards reabertos continuam com faixa vermelha, marca d’água REABERTO, badge e data de reabertura.
-- Textos brancos dentro dos cards receberam um contorno preto mínimo e sombra curta para melhorar a leitura.
-- Chips, etiquetas, checklist, progresso e avatares foram harmonizados com as novas cores.
-- Cards concluídos continuam com o visual travado já existente.
-- Mantidos avatares do owner e participantes, anexos online, notificações e integração Supabase.
+- Mantida integralmente a paleta rosa solicitada.
+- Cards normais continuam com rosa claro em gradiente.
+- Cards reabertos continuam com rosa mais intenso, faixa vermelha e marca d'água REABERTO.
+- Removido o texto branco com contorno preto das superfícies claras.
+- Títulos, descrições, datas e informações agora usam vinho profundo com contraste elevado.
+- Chips, checklist e metadados receberam fundo claro translúcido e texto vinho.
+- Labels, badges e botões permanecem em vinho escuro com texto branco.
+- Avatares receberam aro claro e sombra discreta.
+- Mantidos owner, participantes, anexos online, notificações, cards compartilhados e integração Supabase.
 
 SUPABASE
 - Esta atualização é exclusivamente visual.

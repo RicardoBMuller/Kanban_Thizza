@@ -4083,3 +4083,240 @@ button.view-participant-item:hover {
     -webkit-text-stroke-width: .16px;
   }
 }
+
+/* ======================================================================
+   AJUSTE FINAL DE LEGIBILIDADE — PALETA ROSA PRESERVADA — 2026-07-16
+   A paleta solicitada foi mantida, porém o texto deixa de ser branco nas
+   superfícies claras. O contraste passa a ser baseado em vinho profundo,
+   chips claros e badges escuros, evitando contornos pesados e cansaço visual.
+   ====================================================================== */
+:root {
+  --card-ink: #3f202a;
+  --card-ink-strong: #30161e;
+  --card-ink-muted: #70434f;
+  --card-ink-soft: #855865;
+  --card-wine: #8f173d;
+  --card-wine-2: #b1174d;
+  --card-wine-deep: #68132f;
+  --card-line-soft: rgba(93, 31, 50, .18);
+  --card-white-glass: rgba(255, 255, 255, .58);
+  --card-white-glass-strong: rgba(255, 255, 255, .72);
+}
+
+/* Superfícies mantêm a mesma família rosa, com menos brilho lavado. */
+.card:not(.is-reopened):not(.is-completed),
+.card:not(.is-reopened):not(.is-completed):hover {
+  color: var(--card-ink) !important;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, .18) 0%, rgba(255, 255, 255, .04) 42%, transparent 68%),
+    linear-gradient(145deg,
+      rgba(255, 232, 233, .97) 0%,
+      rgba(255, 212, 213, .95) 54%,
+      rgba(244, 186, 195, .93) 100%) !important;
+  border-color: rgba(119, 47, 68, .24) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .50),
+    0 16px 31px rgba(45, 15, 28, .18) !important;
+}
+
+.card:not(.is-reopened):not(.is-completed):hover {
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, .25) 0%, rgba(255, 255, 255, .07) 42%, transparent 68%),
+    linear-gradient(145deg,
+      rgba(255, 238, 239, .99) 0%,
+      rgba(255, 218, 220, .97) 52%,
+      rgba(246, 189, 198, .95) 100%) !important;
+  border-color: rgba(143, 23, 61, .34) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .62),
+    0 20px 38px rgba(45, 15, 28, .23) !important;
+  filter: none !important;
+}
+
+.card.is-reopened,
+.card.is-reopened:hover {
+  color: var(--card-ink-strong) !important;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, .14) 0%, rgba(255, 255, 255, .035) 42%, transparent 68%),
+    linear-gradient(145deg,
+      rgba(241, 162, 171, .97) 0%,
+      rgba(227, 134, 143, .96) 54%,
+      rgba(207, 101, 119, .95) 100%) !important;
+  border-color: rgba(119, 27, 55, .36) !important;
+  box-shadow:
+    inset 5px 0 0 var(--card-wine-2),
+    inset 0 1px 0 rgba(255, 255, 255, .34),
+    0 17px 33px rgba(76, 18, 38, .23) !important;
+}
+
+.card.is-reopened:hover {
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, .20) 0%, rgba(255, 255, 255, .05) 42%, transparent 68%),
+    linear-gradient(145deg,
+      rgba(246, 174, 181, .98) 0%,
+      rgba(232, 143, 152, .97) 52%,
+      rgba(211, 107, 124, .96) 100%) !important;
+  border-color: rgba(104, 19, 47, .48) !important;
+  box-shadow:
+    inset 5px 0 0 var(--card-wine-deep),
+    inset 0 1px 0 rgba(255, 255, 255, .44),
+    0 21px 40px rgba(76, 18, 38, .29) !important;
+  filter: none !important;
+}
+
+/* Remove o contorno aplicado anteriormente em todo o conteúdo do card. */
+.card:not(.is-completed) .card-title,
+.card:not(.is-completed) .card-desc,
+.card:not(.is-completed) .card-checklist-title,
+.card:not(.is-completed) .card-comments-info,
+.card:not(.is-completed) .card-attachments-info,
+.card:not(.is-completed) .card-check-item,
+.card:not(.is-completed) .card-check-item span,
+.card:not(.is-completed) .meta-chip,
+.card:not(.is-completed) .participant-chip,
+.card:not(.is-completed) .card-actions button {
+  -webkit-text-stroke: 0 !important;
+  text-shadow: none !important;
+}
+
+/* Hierarquia tipográfica clara e consistente. */
+.card:not(.is-completed) .card-title {
+  color: var(--card-ink-strong) !important;
+  -webkit-text-fill-color: var(--card-ink-strong) !important;
+  font-weight: 800;
+  letter-spacing: -.01em;
+}
+
+.card:not(.is-completed) .card-desc {
+  color: #68424d !important;
+  -webkit-text-fill-color: #68424d !important;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.card:not(.is-completed) .card-checklist-title,
+.card:not(.is-completed) .card-comments-info,
+.card:not(.is-completed) .card-attachments-info {
+  color: #5d2a39 !important;
+  -webkit-text-fill-color: #5d2a39 !important;
+  font-weight: 700;
+}
+
+.card.is-reopened .card-title {
+  color: #38141f !important;
+  -webkit-text-fill-color: #38141f !important;
+}
+
+.card.is-reopened .card-desc,
+.card.is-reopened .card-checklist-title,
+.card.is-reopened .card-comments-info,
+.card.is-reopened .card-attachments-info {
+  color: #5a2432 !important;
+  -webkit-text-fill-color: #5a2432 !important;
+}
+
+/* Chips e itens claros: o fundo preserva a paleta e o texto fica vinho. */
+.card:not(.is-completed) .meta-chip,
+.card:not(.is-completed) .participant-chip,
+.card:not(.is-completed) .card-check-item {
+  color: #512635 !important;
+  -webkit-text-fill-color: #512635 !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .66), rgba(255, 248, 250, .47)) !important;
+  border-color: rgba(109, 37, 58, .18) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .62),
+    0 1px 2px rgba(75, 22, 39, .06) !important;
+}
+
+.card.is-reopened .meta-chip,
+.card.is-reopened .participant-chip,
+.card.is-reopened .card-check-item {
+  color: #471f2b !important;
+  -webkit-text-fill-color: #471f2b !important;
+  background: linear-gradient(180deg, rgba(255, 247, 249, .55), rgba(255, 236, 240, .34)) !important;
+  border-color: rgba(93, 24, 45, .22) !important;
+}
+
+.card:not(.is-completed) .card-check-item.done {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .78), rgba(255, 245, 248, .58)) !important;
+}
+
+.card:not(.is-completed) .card-check-item.done span {
+  color: #46313a !important;
+  -webkit-text-fill-color: #46313a !important;
+}
+
+/* Badges e labels continuam escuros, com texto branco realmente legível. */
+.card:not(.is-completed) .label,
+.card:not(.is-completed) .card-status-badge,
+.card:not(.is-completed) .owner-role-badge {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .28) !important;
+  background: linear-gradient(135deg, var(--card-wine-2), var(--card-wine-deep)) !important;
+  border-color: rgba(255, 255, 255, .28) !important;
+  box-shadow: 0 3px 8px rgba(82, 15, 39, .14);
+}
+
+.card:not(.is-completed) .card-actions button,
+.card:not(.is-completed) .btn-soft {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  -webkit-text-stroke: 0 !important;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .24) !important;
+  background: linear-gradient(135deg, #a81046, #761634) !important;
+  border-color: rgba(255, 255, 255, .24) !important;
+}
+
+.card:not(.is-completed) .card-actions button:hover,
+.card:not(.is-completed) .btn-soft:hover {
+  background: linear-gradient(135deg, #bc1e58, #8a173c) !important;
+  filter: brightness(1.03);
+}
+
+.card:not(.is-completed) .card-comments-row {
+  border-top-color: rgba(92, 30, 49, .22) !important;
+}
+
+.card:not(.is-completed) .card-progress {
+  background: rgba(92, 30, 49, .15) !important;
+  border-color: rgba(103, 31, 52, .12) !important;
+}
+
+.card:not(.is-completed) .card-progress-fill {
+  background: linear-gradient(90deg, #8f173d 0%, #cc3a68 58%, #68132f 100%) !important;
+}
+
+.card:not(.is-completed) .card-check-bullet {
+  background: #fff7f8 !important;
+  box-shadow: 0 0 0 3px rgba(99, 28, 50, .12) !important;
+}
+
+.card:not(.is-completed) .card-check-item.done .card-check-bullet {
+  background: #2d9c67 !important;
+  box-shadow: 0 0 0 3px rgba(45, 156, 103, .14) !important;
+}
+
+/* Marca d'água visível sem competir com o texto. */
+.card.is-reopened .reopened-watermark {
+  color: rgba(90, 20, 43, .095) !important;
+  text-shadow: none !important;
+}
+
+/* Avatares ganham aro claro e sombra para não desaparecerem no rosa. */
+.card:not(.is-completed) .card-participant-avatar {
+  border-color: rgba(255, 255, 255, .92) !important;
+  box-shadow: 0 2px 7px rgba(76, 17, 38, .22) !important;
+}
+
+/* Pequenos ajustes para telas menores. */
+@media (max-width: 700px) {
+  .card:not(.is-completed) .card-title,
+  .card:not(.is-completed) .card-desc,
+  .card:not(.is-completed) .card-check-item,
+  .card:not(.is-completed) .meta-chip,
+  .card:not(.is-completed) .label {
+    -webkit-text-stroke: 0 !important;
+  }
+}

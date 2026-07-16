@@ -1,11 +1,10 @@
 ANTES DE PUBLICAR NO GITHUB PAGES
 
-1. Preserve o config.js que já funciona no seu GitHub Pages.
-2. Extraia este pacote e substitua o config.js de exemplo pelo seu config.js atual.
-3. Envie index.html, styles.css, app.js, config.js e .nojekyll para a raiz do repositório.
-4. Após a publicação, abra o site e pressione Ctrl + F5.
+1. Preserve o config.js que já está funcionando no seu GitHub Pages.
+2. Extraia este pacote.
+3. Substitua o config.js deste pacote pelo seu config.js atual.
+4. Envie os arquivos para a raiz do repositório.
+5. Aguarde o deploy do GitHub Pages.
+6. Abra o site e pressione Ctrl + F5 para limpar o cache.
 
-BANCO DE DADOS
-- Esta alteração é apenas visual e não exige novo SQL.
-- Caso já tenha executado 05_ADICIONAR_AVATARES_E_ANEXOS.sql, não precisa executar nada no Supabase.
-- Não execute 01_RECRIAR_BANCO.sql no banco atual, pois ele é destinado a uma instalação nova.
+Não é necessário executar SQL no Supabase para esta atualização visual.
