@@ -1,10 +1,12 @@
-KANBAN QUEST — VERSÃO FCC DARK 2026-07-15
+KANBAN QUEST — FCC TEMA ESCURO — CARD REABERTO LEGÍVEL
+Versão: 2026-07-16
 
-Alterações desta versão:
-- Tema claro removido; o aplicativo utiliza somente o tema escuro institucional.
-- Tema escuro clareado para melhorar conforto visual e contraste.
-- Paleta adaptada à identidade visual da Fundação Carlos Chagas: vinho, magenta e ameixa.
-- Correção de textos escuros no modal de visualização, checklist, participantes e seletor de coluna.
-- Cards externos convertidos para superfícies escuras com tipografia clara.
-- Destaques de conclusão e reabertura preservados.
-- Nenhuma alteração no banco de dados é necessária para esta atualização visual.
+ALTERAÇÕES DESTA VERSÃO
+- Card reaberto deixou de usar texto escuro sobre fundo salmão.
+- Card reaberto mantém a mesma superfície escura do restante do quadro.
+- Salmão passou a ser usado como sinalização: borda lateral, faixa superior, badge e progresso.
+- Título, descrição, metadados, checklist, participantes e comentários ganharam contraste consistente.
+- Marca d'água REABERTO ficou mais discreta e não disputa atenção com o conteúdo.
+- Modal de visualização e modal de edição recebem contexto visual de card reaberto.
+- Adicionado aviso compacto no modal de edição informando data de reabertura.
+- Nenhuma alteração no banco de dados ou nas regras do Supabase é necessária.

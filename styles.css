@@ -3052,3 +3052,222 @@ html[data-theme="light"] .view-section {
 .chat-toggle-badge {
   color: #fff !important;
 }
+
+/* ============================================================
+   CARD REABERTO — CONTRASTE E HIERARQUIA VISUAL
+   Mantém a superfície escura do produto e usa salmão apenas como
+   sinalização de status, no mesmo princípio visual de cards do Trello.
+   ============================================================ */
+:root {
+  --reopened-accent: #e58a93;
+  --reopened-accent-strong: #d36372;
+  --reopened-accent-soft: rgba(229, 138, 147, .15);
+  --reopened-surface: #403740;
+  --reopened-surface-2: #342f37;
+  --reopened-text: #fff7f8;
+  --reopened-muted: #d7c9ce;
+}
+
+/* Fora do modal: o card continua escuro; o status é indicado por borda,
+   faixa superior, badge e marca d'água discreta. */
+.card.is-reopened,
+.card.is-reopened:hover {
+  color: var(--reopened-text) !important;
+  background:
+    linear-gradient(105deg, rgba(229, 138, 147, .075), transparent 38%),
+    linear-gradient(180deg, var(--reopened-surface), var(--reopened-surface-2)) !important;
+  border-color: rgba(229, 138, 147, .52) !important;
+  box-shadow:
+    inset 4px 0 0 var(--reopened-accent),
+    0 16px 32px rgba(10, 7, 10, .28) !important;
+}
+
+.card.is-reopened:hover {
+  border-color: rgba(236, 157, 165, .72) !important;
+  box-shadow:
+    inset 4px 0 0 #ed9da5,
+    0 20px 38px rgba(10, 7, 10, .34) !important;
+  filter: brightness(1.035);
+}
+
+.card.is-reopened::before,
+.card.is-reopened:hover::before {
+  height: 4px;
+  opacity: 1 !important;
+  transform: scaleX(1) translateZ(0) !important;
+  background: linear-gradient(90deg, var(--reopened-accent), var(--reopened-accent-strong)) !important;
+}
+
+.card.is-reopened .card-title,
+.card.is-reopened .card-check-item,
+.card.is-reopened .card-check-item span,
+.card.is-reopened .participant-chip,
+.card.is-reopened .card-actions button {
+  color: var(--reopened-text) !important;
+  -webkit-text-fill-color: currentColor;
+}
+
+.card.is-reopened .card-desc,
+.card.is-reopened .card-checklist-title,
+.card.is-reopened .card-comments-info {
+  color: var(--reopened-muted) !important;
+}
+
+.card.is-reopened .label {
+  color: #ffd7dc !important;
+  background: rgba(211, 99, 114, .18) !important;
+  border-color: rgba(229, 138, 147, .22) !important;
+}
+
+.card.is-reopened .meta-chip,
+.card.is-reopened .participant-chip {
+  color: #e5dbe0 !important;
+  background: rgba(18, 14, 18, .28) !important;
+  border-color: rgba(255, 255, 255, .10) !important;
+}
+
+.card.is-reopened .meta-chip.reopened-meta {
+  color: #ffe1e5 !important;
+  background: rgba(211, 99, 114, .18) !important;
+  border-color: rgba(229, 138, 147, .28) !important;
+}
+
+.card.is-reopened .card-check-item {
+  background: rgba(18, 14, 18, .30) !important;
+  border: 1px solid rgba(255, 255, 255, .075) !important;
+}
+
+.card.is-reopened .card-check-item.done {
+  color: #d4c9ce !important;
+  opacity: .88;
+}
+
+.card.is-reopened .card-check-bullet {
+  background: #978c92;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .035);
+}
+
+.card.is-reopened .card-check-item.done .card-check-bullet {
+  background: #65bd8c;
+}
+
+.card.is-reopened .card-progress {
+  background: rgba(10, 7, 10, .32);
+}
+
+.card.is-reopened .card-progress-fill {
+  background: linear-gradient(90deg, var(--reopened-accent), var(--reopened-accent-strong));
+}
+
+.card.is-reopened .card-comments-row {
+  border-top-color: rgba(255, 255, 255, .11);
+}
+
+.card-status-badge.reopened {
+  color: #fff1f3 !important;
+  background: rgba(211, 99, 114, .18) !important;
+  border: 1px solid rgba(229, 138, 147, .38) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+.card.is-reopened .reopened-watermark {
+  left: auto;
+  right: 18px;
+  top: 56px;
+  transform: rotate(-9deg);
+  color: rgba(255, 222, 226, .045);
+  font-size: clamp(1.9rem, 3.8vw, 3rem);
+  letter-spacing: .10em;
+  z-index: 0;
+}
+
+/* Dentro dos modais: conserva o mesmo fundo escuro e cria uma faixa de
+   contexto, sem transformar toda a interface em vermelho/salmão. */
+#viewCardModalOverlay.is-reopened-context .modal-card,
+#cardModalOverlay.is-reopened-context .modal-card {
+  border-color: rgba(229, 138, 147, .34) !important;
+  box-shadow:
+    inset 0 4px 0 var(--reopened-accent),
+    0 38px 80px rgba(0, 0, 0, .38) !important;
+}
+
+#viewCardModalOverlay.is-reopened-context .modal-header,
+#cardModalOverlay.is-reopened-context .modal-header {
+  background:
+    linear-gradient(90deg, rgba(229, 138, 147, .10), transparent 48%),
+    rgba(255, 255, 255, .022);
+}
+
+#viewCardModalOverlay.is-reopened-context .modal-header h3,
+#cardModalOverlay.is-reopened-context .modal-header h3 {
+  color: #fff8f9;
+}
+
+.card-status-notice.is-reopened,
+.edit-reopened-notice {
+  color: var(--reopened-text);
+  background:
+    linear-gradient(90deg, rgba(229, 138, 147, .13), rgba(229, 138, 147, .055)) !important;
+  border-color: rgba(229, 138, 147, .32) !important;
+  box-shadow: inset 3px 0 0 var(--reopened-accent);
+}
+
+.card-status-notice.is-reopened strong,
+.edit-reopened-notice strong {
+  color: #fff7f8 !important;
+}
+
+.card-status-notice.is-reopened span:not(.status-notice-icon),
+.edit-reopened-notice span:not(.status-notice-icon) {
+  color: #d8cbd0 !important;
+}
+
+.card-status-notice.is-reopened .status-notice-icon,
+.edit-reopened-notice .status-notice-icon {
+  color: #ffc7cd;
+  filter: drop-shadow(0 4px 10px rgba(211, 99, 114, .24));
+}
+
+#viewCardModalOverlay.is-reopened-context .counter-badge {
+  color: #fff !important;
+  background: linear-gradient(135deg, var(--reopened-accent-strong), #a93455) !important;
+}
+
+#viewCardModalOverlay.is-reopened-context .progress-fill {
+  background: linear-gradient(90deg, var(--reopened-accent), var(--reopened-accent-strong));
+}
+
+#viewCardModalOverlay.is-reopened-context .view-check-item,
+#viewCardModalOverlay.is-reopened-context .view-comment-item,
+#viewCardModalOverlay.is-reopened-context .participant-chip,
+#cardModalOverlay.is-reopened-context .edit-item,
+#cardModalOverlay.is-reopened-context .selected-participant-item {
+  color: var(--text) !important;
+  background: rgba(255, 255, 255, .065) !important;
+  border-color: rgba(255, 255, 255, .10) !important;
+}
+
+#viewCardModalOverlay.is-reopened-context .view-check-item.done {
+  opacity: .88;
+}
+
+#viewCardModalOverlay.is-reopened-context .view-check-item:hover,
+#viewCardModalOverlay.is-reopened-context .view-comment-item:hover {
+  border-color: rgba(229, 138, 147, .28) !important;
+  background: rgba(229, 138, 147, .075) !important;
+}
+
+#viewCardModalOverlay.is-reopened-context .view-move-section select:focus,
+#cardModalOverlay.is-reopened-context .input:focus,
+#cardModalOverlay.is-reopened-context .textarea:focus {
+  border-color: rgba(229, 138, 147, .62);
+  box-shadow: 0 0 0 4px rgba(229, 138, 147, .12);
+}
+
+@media (max-width: 700px) {
+  .card.is-reopened .reopened-watermark {
+    right: 12px;
+    top: 52px;
+    font-size: 1.75rem;
+  }
+}

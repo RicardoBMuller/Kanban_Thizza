@@ -1591,6 +1591,34 @@ Motivo: ${formatCloudError(error)}`);
 // ============================================================
 // CARD MODAL — OWNER + PARTICIPANT MODES
 // ============================================================
+function setCardModalVisualState(overlay, { isReopened = false, isCompleted = false } = {}) {
+  if (!overlay) return;
+  overlay.classList.toggle("is-reopened-context", Boolean(isReopened));
+  overlay.classList.toggle("is-completed-context", Boolean(isCompleted));
+  const modalCard = overlay.querySelector(".modal-card");
+  modalCard?.classList.toggle("is-reopened-context", Boolean(isReopened));
+  modalCard?.classList.toggle("is-completed-context", Boolean(isCompleted));
+}
+
+function injectEditReopenedNotice(card, isReopened) {
+  const existing = document.getElementById("edit-reopened-notice");
+  if (existing) existing.remove();
+  if (!isReopened || !card) return;
+
+  const notice = document.createElement("div");
+  notice.id = "edit-reopened-notice";
+  notice.className = "card-status-notice is-reopened edit-reopened-notice";
+  notice.innerHTML = `
+    <span class="status-notice-icon">↩</span>
+    <div>
+      <strong>Card reaberto</strong>
+      <span>Reaberto em ${escapeHtml(formatDateTime(card.reopenedAt || card.createdAt))}. O destaque visual será mantido até uma nova conclusão.</span>
+    </div>`;
+
+  const modalBody = cardModalOverlay.querySelector(".modal-body");
+  modalBody?.insertBefore(notice, modalBody.firstChild);
+}
+
 function openCardModal(mode, columnId, cardId = null) {
   if (!requireAuth(mode === "create" ? "criar cards" : "editar cards")) return;
 
@@ -1602,6 +1630,10 @@ function openCardModal(mode, columnId, cardId = null) {
     openViewCardModal(cardId);
     return;
   }
+
+  const modalCard = existingFound?.card || null;
+  const isReopenedContext = Boolean(modalCard?.isReopened) && existingFound?.columnId !== "done";
+  setCardModalVisualState(cardModalOverlay, { isReopened: isReopenedContext, isCompleted: false });
 
   if (!shared && !getCurrentProject()) {
     if (!isViewingSharedProject) { alert("Crie um projeto antes de adicionar cards."); return; }
@@ -1661,8 +1693,9 @@ function openCardModal(mode, columnId, cardId = null) {
     tempComments  = clone(found.card.comments  || []);
   }
 
-  // Show participant notice if shared
+  // Show participant notice if shared and a compact status notice for reopened cards.
   injectParticipantNotice(!!shared);
+  injectEditReopenedNotice(modalCard, isReopenedContext);
 
   renderSelectedParticipants();
   renderParticipantSearchResults();
@@ -1710,6 +1743,8 @@ function closeCardModal(force = false) {
   participantSearchResults = [];
   tempParticipants = [];
   renderParticipantSearchResults();
+  document.getElementById("edit-reopened-notice")?.remove();
+  setCardModalVisualState(cardModalOverlay);
   cardModalDirty = false;
   closeModal(cardModalOverlay);
 }
@@ -1904,6 +1939,11 @@ function openViewCardModal(cardId) {
   const { card, columnId } = found;
   const isParticipant = Boolean(sharedEntry);
   const isCompleted = columnId === "done";
+  const isReopenedContext = Boolean(card.isReopened) && !isCompleted;
+  setCardModalVisualState(viewCardModalOverlay, {
+    isReopened: isReopenedContext,
+    isCompleted
+  });
   viewEditCardBtn.dataset.cardId = card.id;
 
   viewCardTitle.textContent       = card.title || "Sem título";
@@ -2102,7 +2142,11 @@ function injectMoveSection(cardId, currentCol, isParticipant, isCompleted = fals
     if (ok) closeViewCardModal();
   });
 }
-function closeViewCardModal() { viewNewCommentInput.value = ""; closeModal(viewCardModalOverlay); }
+function closeViewCardModal() {
+  viewNewCommentInput.value = "";
+  setCardModalVisualState(viewCardModalOverlay);
+  closeModal(viewCardModalOverlay);
+}
 
 async function handleViewAddComment() {
   const cardId = viewEditCardBtn.dataset.cardId;

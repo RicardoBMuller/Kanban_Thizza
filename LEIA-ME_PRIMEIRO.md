@@ -251,3 +251,11 @@ No Google Cloud, mantenha:
 A Callback URL exata mostrada no novo projeto Supabase:
 
 `https://SEU-PROJECT-REF.supabase.co/auth/v1/callback`
+
+---
+
+## Atualização visual de 16/07/2026 — card reaberto
+
+Esta versão corrige a legibilidade dos cards reabertos dentro e fora dos modais. O card permanece escuro, alinhado ao restante da interface FCC, e o salmão é usado somente como indicação de status. Não há migração de banco nesta atualização.
+
+Antes de publicar, preserve o seu `config.js` atual. Depois da publicação no GitHub Pages, utilize `Ctrl + F5` para limpar o cache.
